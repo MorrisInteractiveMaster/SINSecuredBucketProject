@@ -1,0 +1,21 @@
+rules_version = '2';
+// LOCAL MVP ONLY. Cloud deployment candidate firestore.mi-sin-portal.rules stays deny-all.
+// All writes, all ciphertext reads and all collection queries use trusted callables or are blocked.
+// Server-owned portalSessions/{uid}: {emailKey,providerId,revision,invitationId,ownershipVerified,proofExpiresAt}.
+// allowlist/{emailKey}: {status,revision,expiresAt}; backend owns identity bindings/roles/policy.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function authenticated(){return request.auth != null;}
+    function own(uid){return authenticated() && request.auth.uid == uid;}
+    function enabled(){return database == 'mi-sin-portal' && get(/databases/$(database)/documents/policy/mvp).data.mode == 'synthetic-emulator-only';}
+    function currentSession(uid){
+      let s=get(/databases/$(database)/documents/portalSessions/$(uid)).data;
+      let e=get(/databases/$(database)/documents/allowlist/$(s.emailKey)).data;
+      return own(uid) && s.providerId == request.auth.token.firebase.sign_in_provider && s.ownershipVerified == true && s.proofExpiresAt > request.time && e.status == 'active' && e.expiresAt > request.time && e.revision == s.revision;
+    }
+    match /portalSessions/{uid} {allow get: if enabled() && currentSession(uid);}
+    match /submissions/{id} {allow get: if enabled() && currentSession(request.auth.uid) && id == get(/databases/$(database)/documents/portalSessions/$(request.auth.uid)).data.invitationId;}
+    match /roles/{uid} {allow get: if enabled() && own(uid) && request.auth.token.firebase.sign_in_provider == 'microsoft.com';}
+    match /{document=**} {allow read, write: if false;}
+  }
+}
