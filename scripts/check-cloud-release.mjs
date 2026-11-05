@@ -35,6 +35,7 @@ export function checkManifest(manifest) {
     appId: '1:1025148630135:web:75e07aa9dd751cc25e0272',
     databaseId: 'mi-sin-portal',
     siteId: 'mi-sin-portal',
+    appCheckProvider: 'recaptcha-enterprise',
     realCollectionEnabled: false,
     sensitiveRetrievalEnabled: false,
     disposalEnabled: false,

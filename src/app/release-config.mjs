@@ -29,7 +29,7 @@ export function clientConfiguration(env) {
         ] !== v,
     ) ||
     !/^AIza[0-9A-Za-z_-]{35}$/.test(env.VITE_FIREBASE_API_KEY || '') ||
-    !/^6[0-9A-Za-z_-]{20,}$/.test(env.VITE_APPCHECK_SITE_KEY || '') ||
+    !/^[0-9A-Za-z_-]{20,256}$/.test(env.VITE_APPCHECK_SITE_KEY || '') ||
     !/^[a-f0-9-]{36}$/i.test(env.VITE_MI_TENANT_ID || '')
   )
     throw new Error(
@@ -37,6 +37,7 @@ export function clientConfiguration(env) {
     );
   return {
     mode,
+    appCheckProvider: 'recaptcha-enterprise',
     appCheckSiteKey: env.VITE_APPCHECK_SITE_KEY,
     firebase: { ...target, apiKey: env.VITE_FIREBASE_API_KEY },
   };

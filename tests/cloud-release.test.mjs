@@ -42,6 +42,14 @@ const policy = () => ({
 });
 test('cloud client requires exact registered app, explicit test mode and complete public configuration', () => {
   assert.equal(clientConfiguration(env).firebase.appId, TARGET.appId);
+  assert.equal(
+    clientConfiguration(env).appCheckProvider,
+    'recaptcha-enterprise',
+  );
+  assert.equal(
+    clientConfiguration(env).appCheckSiteKey,
+    env.VITE_APPCHECK_SITE_KEY,
+  );
   assert.equal(clientConfiguration({}).mode, 'emulator');
   for (const change of [
     { VITE_PORTAL_MODE: 'cloud' },
@@ -50,6 +58,9 @@ test('cloud client requires exact registered app, explicit test mode and complet
     { VITE_FIREBASE_PROJECT_ID: 'other' },
     { VITE_FIREBASE_APP_ID: 'wrong' },
     { VITE_APPCHECK_SITE_KEY: '' },
+    { VITE_APPCHECK_SITE_KEY: 'projects/example/keys/' + 'x'.repeat(30) },
+    { VITE_APPCHECK_SITE_KEY: 'x'.repeat(257) },
+    { VITE_APPCHECK_SITE_KEY: 'not a valid public key' },
     { VITE_FIREBASE_API_KEY: 'placeholder' },
     { VITE_MI_TENANT_ID: '' },
   ])
@@ -150,11 +161,17 @@ test('cloud manifest targets one named database, separate Hosting and one Node 2
     appId: TARGET.appId,
     databaseId: TARGET.databaseId,
     siteId: TARGET.siteId,
+    appCheckProvider: 'recaptcha-enterprise',
     realCollectionEnabled: false,
     sensitiveRetrievalEnabled: false,
     disposalEnabled: false,
   };
   checkManifest(manifest);
+  assert.throws(() =>
+    checkManifest({ ...manifest, appCheckProvider: 'recaptcha-v3' }),
+  );
+  const { appCheckProvider, ...oldManifest } = manifest;
+  assert.throws(() => checkManifest(oldManifest));
   assert.throws(() =>
     checkManifest({ ...manifest, realCollectionEnabled: true }),
   );
@@ -350,4 +367,41 @@ test('Firebase httpsCallable client interoperates with the cloud JSON success an
     await deleteApp(app);
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test('Enterprise App Check uses the public site key with CSP coverage and no shared enforcement configuration', () => {
+  const client = readFileSync('src/app/firebase.ts', 'utf8');
+  assert.match(
+    client,
+    /new ReCaptchaEnterpriseProvider\(config.appCheckSiteKey\)/,
+  );
+  assert.equal(client.includes('ReCaptchaV3Provider'), false);
+  const config = json('firebase.mi-sin-portal.cloud-test.json');
+  assert.equal(Object.hasOwn(config, 'auth'), false);
+  assert.equal(Object.hasOwn(config, 'appCheck'), false);
+  const csp = config.hosting.headers
+    .flatMap((h) => h.headers)
+    .find((h) => h.key === 'Content-Security-Policy').value;
+  const directives = Object.fromEntries(
+    csp
+      .split(';')
+      .map((d) => d.trim().split(/\s+/))
+      .filter((d) => d[0])
+      .map(([name, ...sources]) => [name, sources]),
+  );
+  for (const url of [
+    'https://www.google.com/recaptcha/enterprise.js',
+    'https://www.gstatic.com/recaptcha/releases/test/recaptcha__en.js',
+  ])
+    assert.ok(directives['script-src'].some((s) => url.startsWith(s)));
+  for (const directive of ['frame-src', 'connect-src'])
+    assert.ok(
+      directives[directive].includes('https://www.google.com/recaptcha/'),
+    );
+  assert.equal(directives['script-src'].includes("'unsafe-inline'"), false);
+  assert.equal(directives['script-src'].includes('*'), false);
+  const backend = readFileSync('cloud-functions/index.mjs', 'utf8');
+  assert.match(backend, /getAppCheck\(app\)\.verifyToken\(appToken\)/);
+  const gate = readFileSync('cloud-functions/cloud/runtime.mjs', 'utf8');
+  assert.match(gate, /request.app\?\.appId !== TARGET.appId/);
 });

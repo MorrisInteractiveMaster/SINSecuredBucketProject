@@ -1,5 +1,8 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import {
+  initializeAppCheck,
+  ReCaptchaEnterpriseProvider,
+} from 'firebase/app-check';
 import { clientConfiguration } from './release-config.mjs';
 import {
   initializeAuth,
@@ -27,7 +30,7 @@ export const isLocal = local;
 const app = initializeApp(config.firebase, 'mi-sin-portal');
 if (!local)
   initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(config.appCheckSiteKey),
+    provider: new ReCaptchaEnterpriseProvider(config.appCheckSiteKey),
     isTokenAutoRefreshEnabled: true,
   });
 export const auth = initializeAuth(app, {

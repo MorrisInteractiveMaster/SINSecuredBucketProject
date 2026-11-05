@@ -21,6 +21,7 @@ await writeFile(
     appId: config.firebase.appId,
     databaseId: 'mi-sin-portal',
     siteId: 'mi-sin-portal',
+    appCheckProvider: 'recaptcha-enterprise',
     realCollectionEnabled: false,
     sensitiveRetrievalEnabled: false,
     disposalEnabled: false,

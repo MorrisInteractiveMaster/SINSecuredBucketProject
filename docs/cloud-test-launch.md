@@ -45,7 +45,7 @@ npm ci --ignore-scripts --prefix .deploy/functions
 node scripts/verify-cloud-package.mjs
 ```
 
-Expected: Node `v22.x`; all 41 tests pass (Java 21 is required for the emulators); ordinary build succeeds. `dist/` is the LOCAL build, **not** the cloud artifact. Functions are explicitly pinned to Node 22 regardless of Cloud Shell's earlier Node 24. `test:all` runs the old Phase 1/closed Rules/MVP suites and new cloud tests; it does not contact the real database.
+Expected: Node `v22.x`; all 42 tests pass (Java 21 is required for the emulators); ordinary build succeeds. `dist/` is the LOCAL build, **not** the cloud artifact. Functions are explicitly pinned to Node 22 regardless of Cloud Shell's earlier Node 24. `test:all` runs the old Phase 1/closed Rules/MVP suites and new cloud tests; it does not contact the real database.
 
 ## 3. Read-only inventory and exact Hosting binding
 
@@ -77,7 +77,7 @@ Expected binding: `targets.gen-lang-client-0948635471.hosting.mi-sin-portal = ["
 
 1. In Firebase Console select **Default Gemini Project**, exact project ID above. Verify Microsoft and Google remain enabled as the owner configured them. Do not replace credentials, change account-per-email/account-linking policy, delete users, change account types or add scopes. Keep existing app settings intact.
 2. Confirm Auth → Settings → Authorized domains includes `mi-sin-portal.web.app`. Adding a missing portal/preview domain is a shared Auth setting change: have the owner approve the exact addition first; preserve every existing entry. Do not use domain-wide `web.app` authorization.
-3. Configure **App Check for the portal's registered web app only** with a reviewed reCAPTCHA v3 site. Include the exact portal hostname in its domain list. Put its **secret** only in the Firebase App Check Console registration. Its public **site key** goes into the local build configuration. Confirm provider quota/billing before creating or using it. If your account cannot use this provider within the approved financial/privacy bounds, stop; do not disable App Check or silently switch to a paid provider.
+3. Configure **App Check for the portal's registered web app only** with **Fraud Defense / reCAPTCHA Enterprise**, using a score-based **Web** key. Select the exact project and portal domains; keep domain verification enabled and challenges/checkbox mode off. In Fraud Defense's key details, copy the public **Key ID / Site Key**, not a display name, full `projects/.../keys/...` resource name, Firebase API key or legacy secret. Enter that same public key in the Firebase App Check **reCAPTCHA Enterprise** registration for the portal web app and in `VITE_APPCHECK_SITE_KEY`. This integration does **not** ask for a Classic secret key. Confirm provider quota/billing before use; registration is owner-run, not performed by the scripts.
 4. **Do not turn on project-wide Firestore/Authentication App Check enforcement.** That may block existing AI Studio clients. Only this new callable enforces App Check and checks the portal App ID. Registering the portal app does not require changing the existing app's enforcement.
 5. Microsoft staff authorization also needs the MI tenant GUID, the Entra application/client GUID, and the explicitly approved MI **member** object GUID. Existing Microsoft provider UID must match that object GUID. Backend verifies the Microsoft ID-token signature, issuer, audience, freshness, tenant, object and `acct=0` member claim. If `acct` is absent, the owner must review adding the optional ID-token claim to the appropriate Entra registration; do not weaken checks or change shared credentials to force success. No Microsoft secret belongs in the repository, browser bundle or terminal commands in this guide.
 6. For Microsoft, verify the existing registered **Web** redirect URI includes `https://gen-lang-client-0948635471.firebaseapp.com/__/auth/handler`. For Google, keep its existing minimal identity configuration. Any necessary provider/Entra changes require separate owner review; the scripts perform none.
@@ -93,7 +93,7 @@ node scripts/configure-cloud-test.mjs
 npm run build:cloud-test
 ```
 
-The interactive helper asks for the public Firebase API key, public reCAPTCHA site key and MI tenant GUID. It writes `.env.cloud-test.local`, ignored by Git, with fixed project/App ID/auth domain and `VITE_REAL_COLLECTION_ENABLED=false`. It refuses to overwrite that file. If correcting a typo, edit that local file; never add secrets to it. The build goes into `dist-cloud-test/` with a strict synthetic release manifest. Ordinary `npm run build` cannot accidentally become this deployment artifact.
+The interactive helper asks for the public Firebase API key, public Fraud Defense / reCAPTCHA Enterprise Site Key and MI tenant GUID. It writes `.env.cloud-test.local`, ignored by Git, with fixed project/App ID/auth domain and `VITE_REAL_COLLECTION_ENABLED=false`. It refuses to overwrite that file. If correcting a typo, edit that local file; never add secrets to it. The build goes into `dist-cloud-test/` with a strict synthetic release manifest. Ordinary `npm run build` cannot accidentally become this deployment artifact. Rebuild with `npm run build:cloud-test` after pulling this provider update: the release manifest now requires `appCheckProvider: "recaptcha-enterprise"`, so old Classic/missing-provider artifacts fail the release check. Existing local environment files are not overwritten; update only their public `VITE_APPCHECK_SITE_KEY` value if needed.
 
 ## 6. Prepare the narrow runtime identity (owner-approved IAM changes)
 
@@ -139,7 +139,7 @@ The config contains exactly one DB, one Functions codebase and one Hosting targe
 
 Expected: portal Rules stay deny-all; one Gen 2 Node 22 Function in Montréal uses the dedicated runtime SA, min 0/max 1 instance, 256 MiB, concurrency 1 and 15-second timeout; a temporary `mi-sin-portal--…web.app` preview URL is printed. Save the exact URL. Preview channels use the **same cloud backend**; they are not isolated staging databases. Only synthetic mode is allowed there.
 
-Before OAuth on that preview, have the owner approve adding its **exact returned hostname** to Auth authorized domains and the reCAPTCHA site's domains if needed. Do not authorize every `web.app` site, remove existing domains, disable enforcement or use a debug App Check token. Without that approval, inspect the static preview only and perform OAuth testing on the approved site after the next step.
+Before OAuth on that preview, have the owner approve adding its **exact returned hostname** to Auth authorized domains and the Fraud Defense key's domains if needed. Do not authorize every `web.app` site, remove existing domains, disable enforcement or use a debug App Check token. Without that approval, inspect the static preview only and perform OAuth testing on the approved site after the next step.
 
 ## 8. Publish only the SIN site, then register the approved identities
 

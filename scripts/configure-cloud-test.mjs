@@ -17,7 +17,7 @@ try {
     ).trim(),
     VITE_APPCHECK_SITE_KEY: (
       await rl.question(
-        'Portal reCAPTCHA v3 public SITE key (not its secret): ',
+        'Portal Fraud Defense / reCAPTCHA Enterprise public Site Key (Key ID): ',
       )
     ).trim(),
     VITE_MI_TENANT_ID: (await rl.question('MI Microsoft Entra tenant GUID: '))
