@@ -1,0 +1,25 @@
+{
+  "name": "mi-sin-portal-phase1-isolation-proof",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/routing.test.mjs",
+    "test:rules": "node --test --test-concurrency=1 tests/isolation.emulator.test.mjs",
+    "test:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.emulator.json --only firestore 'npm run test:rules'",
+    "test:closed": "MI_TEST_CLOSED=1 node --test tests/isolation.emulator.test.mjs",
+    "test:emulators:closed": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.emulator-closed.json --only firestore 'npm run test:closed'"
+  },
+  "dependencies": {
+    "firebase": "13.2.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7"
+  }
+}

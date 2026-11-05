@@ -1,0 +1,57 @@
+rules_version = '2';
+// EMULATOR-ONLY proof, NEVER associated with a production deploy config.
+// policy/review: {mode:string='synthetic-emulator-only'}; client writes denied.
+// roles/{uid}: {invitationManager:bool}; owner/test bootstrap only.
+// invitations/{id}: {email:string(3..254),keyId:string(1..64),expiresAt:timestamp}; immutable.
+// submissionSlots/{id}: {uid:string(1..128),createdAt:timestamp}; permanent/create only.
+// encryptedRecords/{id}: {uid:string(1..128),createdAt:timestamp,ciphertext:bytes(512),keyId:string(1..64)}; create only, no client reads.
+// All other paths/updates/deletes/role writes are denied. No production MFA or retrieval claim.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function modelEnabled() {
+      return database == 'mi-sin-portal' && get(/databases/$(database)/documents/policy/review).data.mode == 'synthetic-emulator-only';
+    }
+    function verified() {
+      return request.auth != null && request.auth.token.email_verified == true && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+    function manager() {
+      return verified() && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.invitationManager == true;
+    }
+    function invited(id) {
+      let i = get(/databases/$(database)/documents/invitations/$(id)).data;
+      return verified() && i.email == request.auth.token.email && i.expiresAt > request.time;
+    }
+    function validInvitation(d) {
+      return d.keys().hasAll(['email','keyId','expiresAt']) && d.keys().hasOnly(['email','keyId','expiresAt']) &&
+        d.email is string && d.email.size() >= 3 && d.email.size() <= 254 &&
+        d.keyId is string && d.keyId.size() >= 1 && d.keyId.size() <= 64 &&
+        d.expiresAt is timestamp && d.expiresAt > request.time && d.expiresAt <= request.time + duration.value(72, 'h');
+    }
+    function validSlot(d) {
+      return d.keys().hasAll(['uid','createdAt']) && d.keys().hasOnly(['uid','createdAt']) &&
+        d.uid is string && d.uid.size() >= 1 && d.uid.size() <= 128 && d.uid == request.auth.uid && d.createdAt == request.time;
+    }
+    function validRecord(d,id) {
+      return d.keys().hasAll(['uid','createdAt','ciphertext','keyId']) && d.keys().hasOnly(['uid','createdAt','ciphertext','keyId']) &&
+        d.uid is string && d.uid.size() >= 1 && d.uid.size() <= 128 && d.uid == request.auth.uid && d.createdAt == request.time &&
+        d.ciphertext is bytes && d.ciphertext.size() == 512 && d.keyId is string && d.keyId.size() >= 1 && d.keyId.size() <= 64 &&
+        d.keyId == get(/databases/$(database)/documents/invitations/$(id)).data.keyId;
+    }
+    match /invitations/{id} {
+      allow get: if modelEnabled() && (manager() || invited(id));
+      allow create: if modelEnabled() && manager() && validInvitation(request.resource.data);
+    }
+    match /submissionSlots/{id} {
+      allow get: if modelEnabled() && invited(id) && resource.data.uid == request.auth.uid;
+      allow create: if modelEnabled() && invited(id) && validSlot(request.resource.data) &&
+        !exists(/databases/$(database)/documents/encryptedRecords/$(id)) &&
+        getAfter(/databases/$(database)/documents/encryptedRecords/$(id)).data.uid == request.auth.uid;
+    }
+    match /encryptedRecords/{id} {
+      allow create: if modelEnabled() && invited(id) && validRecord(request.resource.data,id) &&
+        !exists(/databases/$(database)/documents/submissionSlots/$(id)) &&
+        getAfter(/databases/$(database)/documents/submissionSlots/$(id)).data.uid == request.auth.uid;
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

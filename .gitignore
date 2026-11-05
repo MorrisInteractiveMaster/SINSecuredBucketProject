@@ -12,3 +12,6 @@ coverage/
 *.sql.gz
 __pycache__/
 .openai/
+dist/
+*-debug.log
+.firebase/

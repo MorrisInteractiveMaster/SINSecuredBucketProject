@@ -1,47 +1,51 @@
-# Spark-only CAD $0 feasibility assessment
+# Existing Blaze project — usage costs and CAD $0 target
 
-November 5, 2026. **Approved incremental infrastructure spend: CAD $0. No payment method, trial credits, billing linkage, Blaze, paid subscription or automatic upgrade.** The earlier paid architecture and dollar estimates are withdrawn.
+November 5, 2026. Project owner confirms Blaze is active for `gen-lang-client-0948635471`. **No plan or billing change. No new subscription, purchased domain or fixed-cost infrastructure is proposed.** The target is CAD $0 additional actual spending, not a Spark-only constraint.
 
-**Verified:** published product limits support a small no-cost static/Auth/Firestore prototype. **Not verified:** any named project's actual plan, current consumption or suitability. **Decision:** local synthetic development may proceed; no live project is selected and no real collector is approved. A public pricing page cannot certify an organization's account.
+## Financial finding
 
-## Published service limits
+A dedicated named database does not receive a second free allowance. Google's current Standard pricing page explicitly says named (non-default) databases are billed on usage; creation/deletion itself has no separate fee. Assume **all portal operations/storage are billable**. Tiny usage may produce tiny charges, but billing rounding/credits do not constitute a guaranteed-zero design. **An active named-database collector cannot realistically be guaranteed CAD $0.** Keep cloud collection and resource creation disabled until Finance reviews the actual account/rates/usage and approves the exposure. If literally zero incremental spend is non-negotiable, remain local-emulator-only.
 
-| Service | Published no-cost provision | Portal decision |
+Live billing/usage/free-quota inventory could not be read: the authorized read-only database inventory failed authentication. No existing invoice, rate contract, credit, currency, service usage or free-tier eligibility was inspected. Owner confirmation of Blaze is not proof of free remaining capacity.
+
+## Charge model for Standard/Native
+
+| Item | What may be billed | Control / unknown |
 | --- | --- | --- |
-| Spark plan | No payment method required; paid Google Cloud features unavailable; linking Cloud Billing auto-upgrades to Blaze | Must verify Spark and no billing-enabled project before selection; never link billing |
-| Firebase Hosting (not App Hosting) | 10 GB storage and 10 GB/month CDN transfer, aggregated across project sites/channels | Use a dedicated site on included Firebase subdomains; reserve headroom for existing apps; no purchased domain |
-| Hosting multisite | Up to 36 sites/project; each has its own assets/config; project resources remain shared | Additional site only if capacity and owner approval confirmed; adding a site is not adding free quota |
-| Firestore Standard edition | One free-quota eligible database/project; 1 GiB stored, 50,000 reads/day, 20,000 writes/day, 20,000 deletes/day, 10 GiB outbound/month | Reuse inspected eligible database with isolated namespace; no additional database; include Rules lookups, listeners/index/storage overhead and other apps in usage |
-| Firebase Auth email verification | 1,000 verification emails/day on Spark | Prefer verified email/password; limits are shared/provider-controlled, not guaranteed reserved capacity |
-| Firebase Auth email-link sign-in | 5 sign-in emails/day on Spark | Not baseline; manual invitation does not send an Auth sign-in link for free or bypass this quota |
-| Firebase Auth password reset | 150 reset emails/day on Spark | Account for other project users; no custom paid sender |
-| Email/password auth | No-cost option subject to Auth/IP/fair-use limits | No SMS; no assumption that all advanced identity features are enabled |
-| TOTP MFA | Requires Identity Platform; public Firebase pricing lists an Identity Platform Spark tier | Conditional investigation only; verify exact feature/plan/limits before any activation. No Blaze/paid MFA fallback |
-| Browser crypto | Web Crypto on existing supported devices | No paid KMS; existing suitable offline custody resources are a prerequisite, not a new purchase |
-| Emulator Suite | Local development with no cloud service usage when all relevant emulators are connected | Use demo project and synthetic fixtures; local software prerequisites only |
-| GitHub | Existing repo and included free CI allowance only | No paid runners/marketplace actions/storage upgrades; if free CI unavailable, run verification locally |
-| Invitations | Existing corporate email service, manual instructions | No incremental mail service; no SIN, password or private key in email |
+| Document reads | SDK gets, metadata dashboard queries/listeners, transaction retries and rule-dependent document reads, even some denied requests | Bounded pagination, no continuous whole-collection listeners; count auth/role/rules lookups and minimum query charges |
+| Writes | Every invitation/status/slot/payload/event create/update; retries that actually commit | Bounded batches, one deterministic submission, no unconditional loops |
+| Deletes | Manual disposal, TTL if enabled and operator cleanup | No free TTL assumed; keep permanent anti-replay slot separate from payload |
+| Index reads | Queries can bill index-entry reads depending on shape | Measure actual query patterns; no paid Query Explain run now |
+| Storage | Data plus document metadata and indexes over time | Small ciphertext; short approved retention; disabled ciphertext indexing; growth includes audit/tombstones |
+| Network | Response sizes, destination and region; cross-region/backend and browser egress can differ | Inbound/same-region rules differ from internet egress; do not allocate a new per-DB free transfer allowance without account/SKU evidence |
+| TTL/PITR/backups/restores/clones | Extra billable features | None enabled/provisioned by this revision; no automatic provider-erasure claim |
+| Hosting | Site storage/releases and transfer share project included allowance; Blaze excess is billed | Separate site adds no separate free capacity; existing usage unknown |
+| Auth | Existing chosen providers/quotas, possible advanced features; SMS explicitly excluded | Email/password baseline; project settings/MFA/free capacity unverified; no new provider activation |
+| Optional Functions | Invocation/compute/network plus build/artifact/log/trigger/scheduling dependencies | Separate comparison below; not selected/deployed |
 
-The core app can remain $0 **while the selected project remains Spark and stays within the shared quotas**. This is not a Blaze “free tier” budget. If capacity is exhausted, accept unavailable service or suspend the prototype; never authorize charges or delete another application's releases/data to make room. Auth and Firestore have product-specific/IP/daily limits; Hosting transfer resets monthly and storage can block deployment. Do not promise one uniform quota-reset behavior.
+## Illustrative workload and transparent estimate
 
-## Excluded services and unsafe substitutions
+Planning example, not measured usage: 100 invitations/month; 10,000 billed reads (including dashboard/rule overhead), 2,000 writes, 200 deletes, 0.01 GiB average stored including indexes/metadata, 0.01 GiB response egress. Actual counters may be higher under errors, retries, malicious traffic or unrelated applications.
 
-No Functions, Run, App Hosting, paid databases, Cloud Storage bucket, Extensions with backend dependencies, Secret Manager/KMS, TTL deletion, PITR, managed backup/restore/clone or paid/SMS authentication. Firestore explicitly requires billing for TTL/PITR/backup/restore/clone; they are not silently replaced with an always-running browser or a “free” scheduler service. No third-party paid key/mail/security service. Review may be done using existing qualified resources; if independent review is unavailable within existing arrangements, real collection stays blocked rather than assuming a new paid engagement.
+Monthly formula: `(reads / 100000 × readRate) + (writes / 100000 × writeRate) + (deletes / 100000 × deleteRate) + (averageGiB × monthlyStorageRate) + (billableEgressGiB × destinationRate) + optional services`. Apply **no document/storage free quota subtraction** for the named DB. Use the actual Canadian-region and CAD account SKU rates before approval.
 
-Registering a Firebase web app is a configuration operation, not a separately metered backend. It still shares project Auth, IAM, Rules and quotas. Additional app/site feasibility cannot be certified until current resource counts, limits and owner dependencies are inspected. No billing-enabled existing project is an acceptable shortcut even if its additional usage might be small. Do not downgrade an existing Blaze project: that can disrupt other applications and is outside scope.
+The retrieved public pricing table was set to **Iowa**, not Montréal/Toronto. Its reference rates were USD $0.03/100k reads, $0.09/100k writes, $0.01/100k deletes and $0.000205479/GiB-hour (approximately $0.15/GiB-month at 730 hours). They are **not a verified Canadian quote**. With those reference assumptions and a hypothetical billable $0.12/GiB egress rate, the example is about **USD $0.00752/month** before optional services, tax, currency, rounding, differing SKU rates and shared-account effects. This demonstrates small-but-nonzero exposure, not a promised invoice or an approved CAD budget. Exact Canadian prices remain unverified rather than guessed.
 
-## Workload planning (assumptions, not measured usage)
+Do not interpret low average traffic as a cost cap. A single abuse burst, open rule, leaked token or excessive listener can dominate the bill. Review costs by database/service/SKU using an already authorized billing viewer, not a new paid export/report service.
 
-For illustration, 100 invitations/month, under 100 active records, one metadata dashboard session/day and bounded page sizes are likely well below published limits in an otherwise lightly used project. Each submission batch needs several writes and Rules reads; retries and queries add reads. A malicious client or another application can consume the same quota. Avoid continuous collection-wide listeners and repeated aggregate counts; choose bounded metadata queries. No availability guarantee or guaranteed spare capacity is inferred from low SIN volume.
+## Optional backend allowances and risks
 
-Before live synthetic hosting, obtain actual usage across all apps, set manual monitoring ownership and conservative operating caps, and verify the Firebase plan again immediately before any approved deployment. Budget alerts are not a hard spending cap, and this design does not activate a billing account to obtain them.
+For **2nd-generation** request-based Functions, use underlying Cloud Run pricing, not the 1st-generation GB/GHz allowance as if it were interchangeable. The current request-based Run page describes a billing-account-aggregated free tier of 2 million requests, 180,000 vCPU-seconds and 360,000 GiB-seconds monthly, applied using Tier 1 pricing. Regional rates and other workloads affect the discount; remaining account capacity is unknown. This does **not** make named Firestore operations free.
 
-## Sources verified publicly
+Illustration only: 1,000 0.5-second invocations with one vCPU/256 MiB would use roughly 500 vCPU-seconds and 125 GiB-seconds, excluding cold-start/billed timing effects. Compute might fall within unused allowances, but no zero-charge guarantee follows. Cloud Build, Artifact Registry, logging, network, Eventarc/PubSub, Secret Manager/KMS and scheduled jobs can add costs. Firebase documentation notes a 500 MB Artifact Registry allowance; check remaining account/service allowance and actual region before any backend selection. No new KMS/secret service or scheduler is automatically approved.
 
-- [Firebase pricing](https://firebase.google.com/pricing) and [pricing-plan behavior](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans): Spark/no payment method, service eligibility and billing-link effect.
-- [Hosting quotas](https://firebase.google.com/docs/hosting/usage-quotas-pricing): 10 GB storage and 10 GB monthly transfer; shared quota and shutdown behavior.
-- [Hosting multisite](https://firebase.google.com/docs/hosting/multisites): separate configurations, shared resources and site limit.
-- [Firestore pricing](https://firebase.google.com/docs/firestore/pricing) and [quotas](https://firebase.google.com/docs/firestore/quotas): Standard free quotas, one eligible database, paid retention/recovery features.
-- [Authentication limits](https://firebase.google.com/docs/auth/limits): verification/link/reset quotas. [TOTP requirements](https://firebase.google.com/docs/auth/web/totp-mfa) and [Auth overview](https://firebase.google.com/docs/auth): Identity Platform prerequisites and additional quotas. Published Auth pricing/overview express different MAU/DAU limits; use the actual configured feature limits, not a presumed equivalence.
+Proposed safeguards if later approved: minInstances=0, maxInstances=1, bounded concurrency=1, memory=256 MiB, timeout=15 seconds, short bounded bodies, no warm instances, exact named-DB initialization, per-user/invitation quotas, verified Auth/App Check, bounded queries, safe errors and artifact retention scoped to the new codebase only. These reduce exposure; none is a hard monthly spending cap. Some controls add billed DB operations; auth rejection itself may consume backend resources. Do not alter existing artifact retention, functions or quotas to make room.
 
-These sources establish product capability as of November 5, 2026; they do not establish `gen-lang-client-0948635471`, `the-hive-assistant`, or `gen-lang-client-0637098617` account state. See [project-investigation.md](project-investigation.md).
+## Financial approval before activation
+
+1. Read actual billing plan/linkage (without changes), last usage/invoices/currency, eligible DB and existing workloads' quota use. Verify actual Canadian-region SKU rates and feature availability.
+2. Finance must explicitly accept possible nonzero usage charges or require continued emulator-only operation. “Blaze already active” is not authorization for new spend.
+3. Recommend project/service/database-aware budgets/alerts and named monitoring ownership, but do not configure them now or describe them as hard caps. Existing application billing must never be disabled as portal containment.
+4. Approve DB/site/app configuration and any optional backend/TTL/cleanup separately. Keep collection disabled until security/privacy and financial gates pass.
+
+Sources reviewed: [Standard Firestore pricing](https://cloud.google.com/firestore/pricing), [Firestore free quota/features](https://firebase.google.com/docs/firestore/pricing), [Hosting quotas](https://firebase.google.com/docs/hosting/usage-quotas-pricing), [request-based Run pricing](https://cloud.google.com/run/pricing), [Functions billing dependencies](https://firebase.google.com/docs/functions/faq-and-troubleshooting), [Functions resource options](https://firebase.google.com/docs/reference/functions/2nd-gen/node/firebase-functions.globaloptions). No cloud data was read to derive the planning example.

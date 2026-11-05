@@ -1,29 +1,37 @@
 # Morris Interactive | Secure SIN Collection Portal
 
-**Phase 1 revised proposal · Firebase Spark only · CAD $0 infrastructure budget.**
+**Phase 1 review · existing owner-confirmed Blaze project · dedicated proposed database `mi-sin-portal`.**
 
-PR #1 remains draft. Do not merge, deploy, activate billing, upgrade plans or modify any existing Firebase application until the revised design is reviewed. Real SIN collection/retrieval remains blocked by unmet requirements and independent security/privacy review.
+Project `gen-lang-client-0948635471` already supports another application. Do not downgrade billing, create another project, alter existing app resources, merge or deploy. Named database/site/app creations and financial/security/privacy decisions remain unapproved. Cloud SIN collection stays disabled.
 
 ## Review package
 
-- [Firebase architecture and data flow](docs/architecture.md)
-- [Verified public Spark limits and $0 feasibility](docs/costs.md)
-- [Existing-project investigation — pending connection, Default Gemini first](docs/project-investigation.md)
-- [Security requirements that remain unmet](docs/requirements-gap.md)
-- [Threat model](docs/threat-model.md)
-- [Privacy, retention and approval register](docs/privacy-and-decisions.md)
-- [Firebase SDK / Emulator implementation and acceptance plan](docs/implementation-plan.md)
-- [Adapted screen layouts](docs/screen-layouts.md)
-- [Non-collecting 14-state prototype](design/index.html)
-- [Unapproved policy configuration](config/policy.proposed.json)
-- [Phase 1 validation record](docs/phase-1-validation.md)
+- [Architecture and data flow](docs/architecture.md)
+- [Read-only inspection record and pending evidence](docs/project-investigation.md)
+- [Database isolation plan](docs/database-isolation-plan.md)
+- [Existing application impact assessment](docs/existing-app-impact.md)
+- [Database-specific configuration and safe deployment targeting](docs/deployment-isolation.md)
+- [Usage costs and CAD $0 limitation](docs/costs.md)
+- [Optional Functions vs static architecture](docs/functions-comparison.md)
+- [Privacy and offline-key custody](docs/privacy-and-decisions.md)
+- [Threat model](docs/threat-model.md) and [remaining guarantees](docs/requirements-gap.md)
+- [Implementation and all 15 acceptance criteria](docs/implementation-plan.md)
+- [14 screen layouts](docs/screen-layouts.md) and [non-collecting prototype](design/index.html)
+- [Unapproved policy](config/policy.proposed.json) and [validation record](docs/phase-1-validation.md)
 
-Proposed stack: React/Vite/TypeScript/Tailwind, static Firebase Hosting, Firebase Authentication, Firestore Security Rules, browser Web Crypto and Local Emulator Suite. No server/Functions/Run, paid database/key service, purchased domain or new subscription. Manual invitations use existing corporate email.
+Proposed stack remains React/Vite/TypeScript/Tailwind, shared Firebase Auth, dedicated Standard/Native Firestore database/Rules/indexes, static Hosting and browser Web Crypto with offline private keys. Optional Functions are evaluated, not selected/deployed. Named DB usage is billable and cannot be guaranteed CAD $0; there is no second free allowance. No private key is stored in Firebase/GitHub or imported into the hosted app.
 
-The local HTML prototype preserves MI styling and disabled entry. It cannot accept SINs, send mail, authenticate, persist data or import keys. Genuine logo and licensed Visby assets remain pending.
+Live inspection failed due to missing authenticated Firebase CLI session; actual existing database IDs, regions, Rules, app associations, Auth/IAM settings and billing usage remain unverified. Do not assume the existing DB is `(default)` or claim the local sentinel tests prove actual existing-app isolation.
 
-No Firebase project has been selected or its plan/configuration verified. Product documentation supports a small Spark prototype, but account state, shared Rules, existing app dependencies, location and spare capacity need authenticated inspection. No live settings/rules were read or changed in this revision.
+## Local isolation proof
 
-Rules can potentially enforce verified invited-user access and create-once submissions. They cannot validate encrypted SIN contents, guarantee one-time offline decryption or guarantee automatic deadline deletion. The design makes these gaps explicit; it is not production-ready.
+Install locked dependencies with `npm ci --ignore-scripts` (Node 22+, Java 21 for emulator). Run:
 
-Run `python3 scripts/check_phase1.py` for structural design-package checks. Emulator/auth/race/crypto tests are planned Phase 2 work and have not run for this documentation revision. Never commit personal information, private keys, passwords, authentication tokens or deployment credentials.
+- `npm test` — explicit named SDK/cache and proposed deploy scope checks.
+- `npm run test:emulators` — synthetic verified-invite/role/create-once/race/routing model.
+- `npm run test:emulators:closed` — actual deny-all Rules candidate closure checks.
+- `python3 scripts/check_phase1.py` — document/prototype/configuration gates.
+
+The SDK helper is emulator-only; cloud initialization is rejected. `firebase.mi-sin-portal.proposed.json` references the dedicated deny-all Rules/indexes and an unbound Hosting target; not a deployment authorization. Never deploy `firebase.emulator*.json` or the functional model fixture. No live workflow, credentials, database or site was created.
+
+This is not a finished collector or production-readiness claim. Preserve genuine logo/Visby licensing constraints. Never commit real SINs, personal records, credentials, private keys or sensitive operational findings.

@@ -1,0 +1,22 @@
+{
+  "firestore": [
+    {
+      "database": "mi-sin-portal",
+      "rules": "firestore.mi-sin-portal.rules",
+      "indexes": "firestore.mi-sin-portal.indexes.json"
+    }
+  ],
+  "hosting": {
+    "target": "mi-sin-portal",
+    "public": "dist",
+    "ignore": ["**/.*", "**/node_modules/**"],
+    "rewrites": [{"source": "**", "destination": "/index.html"}],
+    "headers": [{"source": "**", "headers": [
+      {"key": "Cache-Control", "value": "no-store"},
+      {"key": "X-Content-Type-Options", "value": "nosniff"},
+      {"key": "Referrer-Policy", "value": "no-referrer"},
+      {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()"},
+      {"key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'self' data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"}
+    ]}]
+  }
+}

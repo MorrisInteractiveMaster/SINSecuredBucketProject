@@ -1,42 +1,44 @@
-# Existing Firebase project investigation — read-only, pending access
+# Read-only inspection record — selected existing Blaze project
 
-November 5, 2026. First candidate: **Default Gemini Project (`gen-lang-client-0948635471`)**. No project selected, no existing configuration changed, no service created, no billing action performed.
+November 5, 2026. Target: **Default Gemini Project / `gen-lang-client-0948635471`**. Owner confirms Blaze is already active and an existing app depends on the project. This supersedes the previous Spark-only project-selection process. Do not evaluate/create another project, downgrade the plan or change billing linkage.
 
-The official Firebase integration is available but is not connected in this session. Neither the Firebase nor gcloud CLI is present/authenticated here. No Firebase credentials have been requested, read from unrelated files, or committed. This prevents live account inspection. A project label or screenshot title cannot establish Spark status, unused capacity, privacy location or safe reuse. Public Firebase documentation was reviewed separately for feasibility.
+## Attempt and result
 
-## Candidate matrix
+Installed/ran Firebase CLI 15.35.0 locally and attempted:
 
-| Candidate / evaluation order | Spark / billing | Hosting enabled / sites | Firestore usage / eligible DB / region / Rules | Auth configured / shared users/providers | Existing dependencies / spare capacity | Decision |
-| --- | --- | --- | --- | --- | --- | --- |
-| 1. Default Gemini · `gen-lang-client-0948635471` | Unknown | Unknown | Unknown | Unknown | Unknown | First candidate; selection blocked pending read-only inspection |
-| 2. The Hive Assistant · `the-hive-assistant` | Unknown | Unknown | Unknown | Unknown | Unknown; name is not proof of application behavior | Next if Default is proven unsuitable; not yet evaluated |
-| 3. Gemini Project Paid · `gen-lang-client-0637098617` | Unknown; “Paid” is not evidence | Unknown | Unknown | Unknown | Unknown | Evaluate after earlier candidates fail; reject if billing-enabled; do not downgrade |
+`firebase firestore:databases:list --project gen-lang-client-0948635471 --json`
 
-No candidate has been declared unsuitable merely because access is unavailable. If none meets requirements, remain emulator-only at $0. Do not create a new billable resource, delete a database or replace existing application services.
+Result: **authentication failed** (“Failed to authenticate, have you run firebase login?”). No authenticated Firebase project tool is exposed in this session despite the plugin's installed instructions. No login credentials were harvested, no user records queried/exported, and no cloud resource/setting was changed. The project owner's billing statement is accepted but has not been independently checked against billing configuration/usage.
 
-## Evidence required before project selection
+## Current evidence matrix
 
-For Default first, record in a restricted MI operational record (not this public repo):
+| Item | Evidence / status | Consequence |
+| --- | --- | --- |
+| Project name/ID | User-supplied exact target | All future commands pin this project; no project switch |
+| Blaze | Confirmed by project owner | Do not downgrade; additional usage can be billed |
+| Existing application | Confirmed by project owner | Protect configuration/data/URL/users; live smoke tests pending |
+| Existing DB IDs, editions/modes, regions | Unknown; inventory denied by missing authentication | Do not assume `(default)`; do not create `mi-sin-portal` until ID collision/current use checked |
+| Proposed portal DB | `mi-sin-portal`, Standard/Native, Montréal proposed | Not created; Canadian availability/privacy/configuration approval pending |
+| Existing rules/releases/indexes | Unread | No claims of actual rules audit or existing-app access protection validation |
+| Web apps/Hosting sites/config/releases | Unknown | New site/app proposal unbound; preserve existing default/site releases |
+| Auth providers/domains/Identity Platform/MFA | Unknown | No shared provider/domain/template/user modifications |
+| IAM/server clients | Unknown | No broad IAM changes; privileged bypass and DB scope need review |
+| Free-quota eligibility/current usage | Unknown | Assume named portal usage billable; no second free allowance |
+| Actual billing/export/credits/currency | Not accessible | No guaranteed $0, no pricing-specific account quote |
 
-1. Project identity and Firebase registration state. A Google Cloud/Gemini project may not have Firebase enabled. Capture current Spark/Blaze label plus Cloud Billing linkage/enabled state through read-only account views/API. If these disagree or cannot be verified, stop; do not unlink billing or activate Firebase as an inspection step.
-2. Hosting enabled state, existing site IDs, domains, current release/configuration, app owners and storage/transfer totals. Determine whether a **new** dedicated site fits the 36-site limit and shared free capacity without editing the default site. Reading a console's “get started” state is evidence; clicking it is activation and out of scope here.
-3. Firestore database inventory, edition/mode, free-quota eligibility, actual database ID and immutable location. Do not assume `(default)` is unused or the free-quota database. Record storage/read/write/delete/egress usage and dependencies; no scans of private documents for this inventory. If no database exists, any future creation/location choice needs review and must still stay Spark.
-4. Read **the deployed complete Firestore Rules and deployment source owner**, not only a repository fragment. Record ruleset version/hash and effective recursive allows, collection groups and role dependencies. Inspect index/field overrides. Preserve raw configuration privately; no bulk private-data export. This revision does not include an integrated replacement ruleset because the deployed rules are unseen.
-5. Authentication providers/settings, email/password enabled state, authorized domains/action URLs, Identity Platform/TOTP configuration, use/quotas and existing application owners. Inspect counts/configuration only; do not export user emails/password hashes or change verification flags. Determine whether enabling or changing any provider would affect other applications. Do not make global changes for this portal during inspection.
-6. Project IAM/owners, service accounts, deployed server clients/other apps, rules deployers and incident/contact ownership. Server/IAM clients may bypass Rules; identify this privilege even if ordinary users are denied. Confirm that unrelated app code does not read arbitrary collections or expose backend credentials.
-7. Existing web apps, app IDs, Hosting site capacity and per-project resource limits. Registering a new app/site must be confirmed no-cost and non-disruptive, with an explicit dedicated future deploy target. Auth authorized-domain changes are shared project changes requiring their own review. A separate origin is useful but not resource isolation.
-8. Existing Google Analytics, error/performance telemetry, App Check enforcement and auth templates. Do not initialize these SDKs in portal code. Determine whether action-link and project-wide changes could accidentally affect another application or route a user to the wrong site.
-9. Privacy acceptance of the actual Firestore location, Auth US processing, Hosting global delivery, Google subprocessors and administrative access. If MI requires all identity processing in Canada, this Firebase Auth design is unsuitable even with a Canadian database.
-10. Owner confirmation of application dependencies and enough free quota for all apps. Record a concrete go/no-go with date, evidence source, owner and reasons before selecting a project.
+## Next authorized read-only inspection
 
-## Safe inspection methods
+Use an authenticated Firebase connection/approved existing CLI login with access to the named project. Do not run setup/deploy/create as an inspection substitute. Query configuration only, avoiding document/user exports. Retrieve privately:
 
-Prefer the connected official Firebase integration for supported read-only metadata. Where it lacks plan/Rules/IAM details, use authorized read-only console/API inspection through the project's owner; do not infer a setting from an unavailable response. With an already installed/authenticated approved CLI, read-only inventory commands include `firebase projects:list`, `firebase apps:list --project PROJECT_ID`, `firebase hosting:sites:list --project PROJECT_ID`, `gcloud billing projects describe PROJECT_ID`, and `gcloud firestore databases list --project=PROJECT_ID`. These are examples for a future authenticated environment, not commands executed in this revision. CLI output fields and permission errors must be interpreted carefully; inability to list a service is not proof it is absent.
+1. List every Firestore DB, then get each database's exact resource name, ID, edition, mode, location, free-quota status and protection/TTL/PITR/backup configuration. `firestore:databases:list/get` with explicit project; record whether `mi-sin-portal` already exists. If it exists, treat it as protected existing data until ownership/purpose confirmed; no overwrite.
+2. Read deployed Rules releases and full source per DB, current indexes and owner repository/configuration. Each DB has its own rules release. Record source hashes, not private raw Rules/IAM details in this public repo.
+3. Map application DB usage from owners' actual SDK initialization, backend clients, configuration and deployment records. App registration alone does not identify the DB. Do not scan private business documents to infer ownership.
+4. List registered web apps, Hosting site IDs/domains/targets/releases, shared storage/transfer usage and current CI jobs/deploy credentials. Inspect source deploy configs with owner permission; identify default alias/broad deployment hazards.
+5. Read Authentication providers/authorized domains/action URLs/template settings, Identity Platform/TOTP configuration and counts/quotas without exporting users/password hashes or changing any account. Determine how new portal users/provider changes could affect the existing app.
+6. Review existing project and database IAM, server SDK principals, deployers, billing admins and service accounts. Identify broad existing privileges and potential database-level IAM Conditions before proposing least-privilege portal identities. Do not grant/revoke roles during review.
+7. Read actual billed operations/storage/network and recent invoices/usage by database/SKU where available, currency/contract rates and billing-account aggregated free usage for possible Functions. Use a read-only billing viewer if already authorized; absence of usage data is not evidence of zero cost. Do not activate paid exports to get a report.
+8. Confirm named DB Canadian availability, API/edition limits, privacy acceptance, existing app owners, baseline smoke tests and a no-disruption change/rollback owner.
 
-Never run `firebase init`, `firebase deploy`, `firebase use --add`, `hosting:sites:create`, database create/delete, IAM updates, Auth user modifications, Rules updates, billing link/unlink, or plan upgrades as part of this read-only investigation. No repository deploy credential should be needed to inspect metadata. Do not paste tokens, service-account JSON, private Rules evidence or personal records into public GitHub issues.
+Examples after authentication: `firebase firestore:databases:list --project gen-lang-client-0948635471`; `firebase firestore:databases:get VERIFIED_DATABASE_ID --project gen-lang-client-0948635471`; `firebase apps:list --project gen-lang-client-0948635471`; `firebase hosting:sites:list --project gen-lang-client-0948635471`; `firebase firestore:indexes --database VERIFIED_DATABASE_ID --project gen-lang-client-0948635471`. Verify pinned CLI help for exact syntax; these commands have not been rerun successfully here. Rules/Auth/IAM/billing details may require read-only console/APIs beyond the CLI inventory.
 
-## Selection criteria and safe integration
-
-Reject a candidate if it is not Spark, is billing enabled, has incompatible immutable database location/mode, lacks free capacity, or cannot isolate portal data without disrupting existing applications. Record the specific reason then repeat the same inspection for the next project. Do not relocate/destroy an existing database or downgrade a live project. If broad deployed Rules would expose portal collections, do not claim a namespaced deny overrides them; overlapping allows are ORed. The existing application owner must propose and regression-test any future change, or reuse is unsuitable.
-
-Connection is the only missing input needed to continue the live project assessment. The architecture, cost-source verification, layout adaptation and test plan can be reviewed independently; they intentionally do not select a project by name.
+No `firebase init`, `deploy`, database create/delete/update, Auth export/import, provider changes, IAM modifications, billing actions, app/site registration or paid export is authorized by this inspection. Do not post credentials, user IDs/emails, private configuration or security findings into public issues.

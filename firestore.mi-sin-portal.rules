@@ -1,0 +1,14 @@
+rules_version = '2';
+// Phase 1 deployment candidate: CLOSED, NOT DEPLOYED.
+// Target: gen-lang-client-0948635471 / mi-sin-portal ONLY.
+// Model: invitations, submissionSlots, submissions, encryptedRecords, auditEvents,
+// roles, assignments and policy. No client operations are enabled at this phase.
+// Future functional rules must be reviewed and tested separately before replacing
+// this gate. Never associate this file with an existing application's database.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

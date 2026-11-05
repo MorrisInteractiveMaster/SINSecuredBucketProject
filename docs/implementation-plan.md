@@ -1,82 +1,72 @@
-# Firebase-only phased implementation and acceptance plan
+# Named-database implementation and acceptance plan
 
-November 5, 2026 · Incremental infrastructure budget **CAD $0**, Spark only. Keep PR #1 draft; no merge, live deployment or service changes before revised-design review. A design review is not production security/privacy approval.
+November 5, 2026. Existing project `gen-lang-client-0948635471`, Blaze confirmed by owner. Proposed Standard/Native DB `mi-sin-portal`, Montréal subject to privacy/availability. No new project, billing change, merge, deployment or creation now. Additional actual spending target CAD $0; do not guarantee it for billed usage.
 
-## Phase 1 — Revised proposal (this package)
+## Phase 1 review package
 
-Retain MI colours, restrained Altitude-inspired structure, responsive layout, 14 screen concepts, legal-purpose analysis and all 15 original acceptance requirements. Replace paid infrastructure with React/Vite/TypeScript/Tailwind, Firebase Web SDK, Auth, Firestore/Rules, static Hosting and Web Crypto. Add project-investigation and requirements-gap registers, no-cost evidence, offline-custody design and clearly limited handling/disposal semantics.
+Deliver architecture, data-flow, database isolation/impact/deploy plans, usage-cost/Functions comparison, privacy/custody/threat/gap registers, dedicated closed Rules/index/config proposals, explicit named SDK helper and local automated isolation proof. Preserve all 14 screens, MI CSS and approved logo/font constraints. No finished React app, live Auth integration, crypto utility, retrieval backend or production collector is claimed.
 
-Original brand review remains valid: Visby CF Regular body, Demi Bold headings/Extra Bold emphasis when licensed; sentence case and MI logo rules override Altitude. Original logo assets and licensed font binaries remain unavailable. Use plain labelled organization text and system-ui, not a reconstructed logo or unlicensed font.
+Current live inspection blocked: pinned CLI inventory failed authentication. Database IDs/locations/rules/indexes/associated apps/Hosting/Auth/IAM/actual billing usage remain unread; owner Blaze confirmation is accepted, not re-inferred from names. Complete project-investigation.md before any resource approval.
 
-Live project configuration remains uninspected pending Firebase connection; Default Gemini is first candidate, no project selected. No integrated live Rules patch, database, web app, Hosting site or deploy workflow is created during Phase 1. Structural prototype checks are not security-rule tests.
+## Phase 2 — local synthetic functional MVP
 
-## Phase 2 — Local synthetic functional MVP
+1. Complete read-only inventory and actual app/config baselines; no reset/setup/deploy as an inspection shortcut. Confirm proposed DB ID unused and review Standard/Native/Canadian location/delete protection/cost.
+2. Build React/Vite/TypeScript/Tailwind with modular Firebase SDK and locked versions. Current JavaScript routing module is a small isolation proof. Integrate it into a central typed initializer later, retaining explicit named DB and memory cache. No SDK default fallback, independent db handle, user-controlled selector or live-project connection in demo build.
+3. Auth: existing supported provider only after owner review; verified email/password baseline, Firebase verification link, refresh identity token, portal-specific roles/active invites. Manual corporate instructions; no password/SIN/key in mail. Auth remains shared and does not create automatic portal roles.
+4. Expand emulator-only model to full invitation/revoke/reissue/status/audit/disposal schema. Enforce exact field/type/size/state/owner checks and atomic getAfter relationships; never use a client that bypasses Rules to test authorization. Permanent slot and no contractor payload reads.
+5. Web Crypto synthetic test vectors and offline key/tool/handoff proof; no committed private keys, real SINs or cloud key import. Client checksum is input quality, not issuance proof. Hidden content validation gap remains explicit.
+6. Metadata-only admin dashboard; distinct invitation/custodian/disposal/audit roles. Actual closed candidate remains closed until reviewed functional Rules replace it. Local-only model is never deployed using its fixture config.
+7. Select static versus optional broker only after financial/security/privacy review. Broker can strengthen single delivery/audit and cleanup but doesn't validate browser ciphertext without changing trust boundaries or prevent repeated offline decryption. No backend code/deploy added merely due to Blaze.
+8. Actual provider MFA/refresh/revocation/session and full privacy/logging/device checks remain required; emulator claim injection is not real MFA evidence.
 
-1. Complete read-only [project investigation](project-investigation.md) in order before considering later live synthetic hosting. Do not hold local development up on this connection. Do not turn a failed query into proof a service is absent.
-2. Set up React/Vite/TypeScript/Tailwind and modular Firebase SDK with a lockfile. Minimum dependencies: react/react-dom/firebase; build TypeScript/Vite/Tailwind; tests use `@firebase/rules-unit-testing` plus a standard JS runner. Use Firebase CLI + a supported JDK for the local Firestore emulator; pin supported versions at implementation. No server framework or paid remote runner.
-3. Use a `demo-mi-sin-portal` project ID and explicit Auth/Firestore emulator endpoints bound to local interfaces. Refuse to initialize a non-demo project in the synthetic build; configure SDK emulators before first network use. Test code must fail if emulator environment variables are missing. No live Firebase API keys/credentials are needed for demo emulator tests.
-4. Implement a **standalone emulator-only** schema/rules proof from the architecture contract. Use default-deny for the isolated test model; it is not a replacement for any existing project's Rules. Seed roles/policy/fixtures only via test setup with `withSecurityRulesDisabled`; all assertions use normal authenticated/unauthenticated clients. Never run real tests with an Admin SDK that bypasses Rules.
-5. Auth flow: email/password, Firebase verification link, `reload` + ID-token refresh, exact signed verified email and provider binding. Emulated verification does not prove production deliverability or MFA. Manual corporate invitation instructions replace an automated portal sender. No password/private key/SIN in invitations.
-6. Implement metadata-only dashboard, invitation expiry/revocation/reissue, deterministic submission slot/payload batch, scoped statuses and paired disposal. Contractor cannot read payload even to check submission success; read own status instead. Preserve tombstones. Never use `addDoc` for an unconstrained number of submissions.
-7. Implement Web Crypto proof with synthetic plaintext and freshly generated disposable test keys only. No private key fixtures committed. Test RSA-OAEP SHA-256 interoperability, label/context, UTF-8 size, wrong key and tampering; acknowledge arbitrary-byte writes through malicious direct clients cannot be identified as invalid encryption by Rules.
-8. Prototype the separate offline local utility and custody workflow using synthetic keys only. Prove encrypted key format/unlock compatibility, no network during import, no private-key storage/console output and safe context checks. No hosted private-key upload form. Single-record ciphertext handoff remains an unresolved review requirement; no general export/download feature.
-9. Test memory-only Auth/Firestore cache, no offline drafts, safe errors and CSP in actual built Vite output. UI idle sign-out supplements request.time/auth_time checks but does not become a central session service. No force-refreshed token masquerading as fresh authentication.
-10. Prototype shows “handling claimed” and “transfer attested”, never “one-time reveal enforced”. All unmet guarantees remain visible in the readiness register. No real-project encrypted writes in a supposedly synthetic-only demo because Rules cannot determine the hidden data is synthetic.
+Local dependencies were installed with scripts disabled; `npm ci --ignore-scripts` is the reproducible reinstall command. Verification commands run for this revision:
+- `npm test`: named SDK and deployment-manifest unit checks.
+- `npm run test:emulators`: local functional subset / named routing / authorization / batch race.
+- `npm run test:emulators:closed`: actual deny-all candidate client closure tests.
 
-Expected local commands after dependency setup: `firebase emulators:exec --project demo-mi-sin-portal --only auth,firestore 'npm run test:rules'`; `npm run test:crypto`; `npm run build`. These are planned Phase 2 commands, not executed during this documentation revision. Full browser/system checks require supported browser tooling and manual accessibility tests.
+Pinned CLI 15.35.0 uses Java 21 emulator; no login/cloud project required for demo tests. The test harness refuses absent/wrong local FIRESTORE_EMULATOR_HOST/GCLOUD_PROJECT and the SDK helper refuses real project initialization. Emulator admin REST is used only to seed synthetic fixtures on loopback; assertions use unprivileged mocked Auth clients. It is not a production endpoint or an authorization bypass test.
 
-## Phase 3 — Security/rules proof and independent review
+The pinned emulator ignored the initial multi-DB array and defaulted open; negative tests failed. Corrected harness loads one explicit rule source with named-DB guard/default deny. Both model and closed suites then passed. This is not validation of independent cloud Rules releases, indexes or existing actual permissions; see database-isolation-plan.md. Do not upgrade from this result to an actual cloud test without approval.
 
-Test the entire Rules permission matrix, direct SDK calls, races, revoked invitations/roles and failed operations, not hidden UI only. Include unsupported properties as explicit failing requirements rather than weaken tests. Read deployed Rules and original app regression fixtures before proposing any future integration. Simulate a permissive recursive allow to show namespace-only protection fails. Verify changed Rules preserve other app authorization; do not deploy a standalone test ruleset to production.
+## Phase 3 — independent security/privacy and existing-app verification
 
-Inspect real-project settings read-only for Auth/Identity Platform/TOTP, quotas, regional privacy, IAM and other backend clients. TOTP cannot be assumed paid or already safe/free; prove no-billing configuration and signed second-factor/freshness semantics before proposing a change. No change to providers, users, rules or billing as part of this inspection. Emulator claims are test inputs, not proof Firebase will issue corresponding real MFA evidence.
+Review real DB Rules/IAM/Auth and association maps; assess new-portal-user access to existing DB separately. Owner-approved existing-app baseline/regression tests are not replaced by local sentinels. Independent crypto/custody/data-handling review, signed MFA/freshness integration, abuse/cost controls, atomic full lifecycle/crash/recovery and retention/restore tests. Scan logs/storage/build artifacts with synthetic canaries, never real SINs. Resolve hidden-input validation, one-time delivery and disposal gaps without inventing guarantees.
 
-Independent reviewers examine the release artifact, Rules, key custody and actual account settings. If original non-negotiable guarantees remain unmet (one-time decryption, trusted encrypted-input validation, automated disposal), the outcome is synthetic-only. No paid workaround, compliance badge or “production-ready” claim.
+## Phase 4 — gated provisioning/deployment preparation
 
-## Phase 4 — Preparation only after revised-design review
+Separate approvals: (a) resource config + Canadian privacy and usage charges before creation, (b) exact database/site/app/Rules/index targets and existing-app impact before deploy, (c) real collection only after independent review and all original mandatory properties demonstrated. No auto-merge/deploy, no project downgrade/billing action/IAM/Auth change. Prepare GitHub CI read-only demo jobs first; any later portal deploy uses explicit project/config/selector and immutable reviewed artifact. Deployment credentials never appear in PR workflows/source/logs. Least-privilege database-specific backend/deploy access must be reviewed, not granted now.
 
-When and only when the candidate is confirmed Spark/no billing and owners approve a non-disruptive setup, prepare a distinct web-app registration and dedicated Hosting target on a free Firebase domain. Do not use App Hosting or connect Functions/Run. Shared Auth authorized domains, templates and providers require owner review. Preserve default site and other app configs. No service creation/deploy occurs in this phase of work.
+## Original 15 acceptance criteria
 
-Future configs: explicit reviewed `firebase.<portal>.json` target, merge-aware complete Firestore Rules and scoped index diff, credential-free `.env.example` with public Firebase config placeholders, emulator-only mode and restrictive Hosting headers. Public Firebase config is not a secret; private keys and service-account credentials are never VITE variables. Production-blocking Rules gate is owner-controlled and not just a client boolean. If existing broad Rules override it, no live namespace can be enabled safely until integration is resolved.
+| # | Requirement | Revised evidence / present disposition |
+| --- | --- | --- |
+| 1 | Unknown email denied | Model rejects anonymous/unverified/uninvited; actual Auth/provider and existing shared-user behavior still need review |
+| 2 | Expired invite denied | Full expiry/revoke/reissue model boundaries remain to implement/test; active-invite expiry check exists in limited model |
+| 3 | Verification short-lived and not replayable | Firebase email-verification link replaces custom OTP; real provider expiry/replay/token-refresh/delivery tests pending |
+| 4 | Invalid SIN rejected | UI format/Luhn plan; Rules/public-key-only backend cannot validate hidden SIN; **unresolved server-content guarantee** |
+| 5 | Submit once | Model create-only deterministic slot/paired payload; replay denied; full status/event/reissue transitions pending |
+| 6 | Concurrent requests no duplicates | Model 20 competing batches yielded one successful submission; actual service transaction limits still need approved proof |
+| 7 | No plaintext DB | Closed gate accepts no data; model Bytes/schema only, no real SIN; actual crypto and all-writers assurance unresolved |
+| 8 | Ordinary admin cannot retrieve | Model manager/custodian no payload reads; actual gate blocks all; future assignment/MFA/Rules/IAM checks pending |
+| 9 | Authorized retriever completes fresh MFA | Actual signed second-factor evidence/reauth semantics unknown; password/iat not sufficient; real reads disabled |
+| 10 | One-time retrieval cannot replay | Static direct get cannot consume read; optional backend transaction-before-ciphertext delivery can strengthen operation, not repeated local decrypt; unimplemented |
+| 11 | Retention/deletion correct | Proposed atomic active delete/tombstone and optional billed eventual TTL/backend; no exact-time backup/global erasure; not active |
+| 12 | No SIN in logs/errors | Current prototype no input/network; synthetic proof fixtures only; full crypto/browser/backend/provider logging proof pending |
+| 13 | Mobile/desktop | Existing responsive CSS/14 screens retained; real device/functional mobile tests pending |
+| 14 | Keyboard/contrast | Existing labels/focus/style retained; full accessible built app, screen-reader and contrast checks pending |
+| 15 | No insecure production defaults | Closed Rules, emulator-only helper and exact deploy manifest unit checks; live creation/deployment blocked; actual cloud integration still unverified |
 
-GitHub Actions later: run emulator/crypto/build/accessibility checks with read-only repo permissions and demo credentials; no cloud auth on PR workflows, no pull_request_target running untrusted code, no automatic deployment on PR/main or Firebase automatic framework rollout. Any later reviewed deployment uses explicit project/site, minimal available deployment authorization, free included CI resources only and a protected manual approval path where available without payment. Do not assume repository policy features are included: if unavailable, retain manual owner-controlled local deployment. No deploy workflow is added now; never activate billing/OIDC permissions to solve a $0 constraint.
+Additional mandatory isolation tests: explicit named handle; missing/default/other DB refusal; no portal data in synthetic existing/default DBs; unauthorized get/list/write denied; existing fixture unchanged; manifest cannot add another DB or shared service block. These pass locally. Full real existing-app data denial cannot be asserted until its own Rules are inspected. A portal rule cannot fix permissions in another database.
 
-## Original acceptance criteria — preserved with revised disposition
+## Production-readiness gates — all still open
 
-| # | Original requirement | Firebase test/evidence needed | Current disposition |
-| --- | --- | --- | --- |
-| 1 | Unknown email cannot access form/data | Emulator unauthenticated/unverified/unapproved/existing other-app users; swap IDs and typed email; direct client requests denied | Planned Rules proof |
-| 2 | Expired invitations rejected | request.time bounds, revoked state, stale token, known reference and delayed cleanup | Planned Rules proof |
-| 3 | Verification codes expire and cannot replay | Custom numeric OTP replaced by Firebase verification link; test Auth action-link replay/expiry and token refresh; provider controls limits | Explicit flow change, production behavior unverified |
-| 4 | Invalid SIN rejected | UI length/Luhn/separator/Unicode tests; direct malformed encrypted write bypass must be acknowledged | **Backend content validation not achievable in Rules** |
-| 5 | Contractor submits once | Deterministic slot/payload, create-only; refresh/reissue/new UID cannot reuse; contractor no read/update | Planned Rules proof |
-| 6 | Concurrent writes cannot duplicate | At least 20 simultaneous authorized batches, exactly one payload/slot/status success; failed/partial writes do not mark submitted | Planned emulator race proof |
-| 7 | Database contains no plaintext SIN | Crypto fixtures + emulator stored Bytes inspection; malicious clients can put arbitrary content in allowed Bytes | Normal-client proof possible; **all-writers guarantee unmet** |
-| 8 | Ordinary admin cannot retrieve | Role/assignment get-vs-list matrix; no generic other-app admin/role self-promotion; no key in hosted portal | Planned Rules proof; IAM bypass risk |
-| 9 | Permitted admin completes fresh MFA | Actual no-billing Identity Platform/TOTP configuration + signed second factor and auth_time checks; reauth password alone fails MFA | **Not demonstrated; real reads disabled** |
-| 10 | Retrieval cannot replay after consumption | Demonstrate repeat-read/retained-ciphertext counterexample, distinguish claim transition from data read | **Cannot guarantee; real one-time retrieval blocked** |
-| 11 | Deletion/expiry follows approved retention | Paired payload delete/tombstone/event, expiry denies read, no recreation; offline/no-staff test shows purge doesn't run | **Automatic deadline deletion unmet** |
-| 12 | Logs/errors never include SIN | Scan synthetic browser/error/test/build artifacts and SDK persistence; no third-party telemetry; safe fixed messages | Planned normal-client evidence; malicious origin/extension risk |
-| 13 | Mobile/desktop interface | Supported browser tests at 390px/1440px + iOS/Android form behavior, no page-wide overflow | Responsive design retained; device tests pending |
-| 14 | Keyboard/contrast | Labels, focus summary, visibility aria-pressed, 200% zoom, screen reader/manual AA contrast | Pending accessible functional build |
-| 15 | Production cannot use insecure defaults | No live payload writes, owner-controlled Rules/policy gate, demo-only build refuses real project, unknown project/plan stops deployment | Current design/prototype disabled; deploy guard integration pending |
+- [ ] Authenticated read-only inventory, actual billing usage/rates and existing app DB/source/Rules/IAM association.
+- [ ] Financial decision on nonzero usage exposure; if absolute zero required, remain emulator-only.
+- [ ] Location/privacy/cross-border/legal purpose/SIN-versus-BN/notice/contact/official destination approval.
+- [ ] Exact isolated resource config and owner no-disruption test/rollback plan approved before creation.
+- [ ] Fully validated functional Rules/indexes, named SDK/server selection and independent deploy/permissions behavior.
+- [ ] Crypto/offline custody/recovery/handoff and real MFA reviewed/demonstrated.
+- [ ] Original validation/retrieval/disposal requirements met or unresolved work remains disabled; no silent weakening.
+- [ ] All acceptance criteria, real-app regression and security/privacy independent review completed against release artifact.
 
-## Rules test matrix for Phase 2
-
-Include unauthenticated, verified-but-uninvited, unverified invited, verified active invited, expired/revoked/consumed, other invitation/UID, verified unrelated-project-app user, invitation manager, assigned/unassigned ciphertext custodian, disposal officer, auditor and impersonated role-field clients. Assert exact get/list/create/update/delete outcomes for every namespaced path. Specific negative tests: extra/plaintext fields; oversized/wrong-type ciphertext; wrong key ID; client timestamp; altered email/owner/purpose/expiry; status-only submission; payload-only submission; slot deletion/recreation; submitted invitation reissue; deletion without tombstone/event; role self-grant; expired assignment; recent token iat but stale auth_time; replayed claim and repeated payload get. Demonstrate that read permission is reusable, not “passed one-time retrieval”.
-
-Use `assertFails`/`assertSucceeds` on normal SDK requests with rule coverage reports. Test verification/token refresh through the Auth emulator, and Rules with fabricated signed-claim test contexts; distinguish these from real-provider evidence. Run a separate combined test model using sanitized existing app fixtures after Rules inspection. No private live data exported to run tests.
-
-## Production readiness — blocked
-
-- [ ] Actual project is Spark/no billing; existing services/rules/IAM/usage inspected in required order.
-- [ ] No disruptive rules/Auth/Hosting change; owners approve integration; other-app regressions tested.
-- [ ] Legal need, SIN-versus-BN criteria, notice/contact and official destination approved.
-- [ ] Firebase region, US Auth/global processing and access terms accepted.
-- [ ] Offline keys/custody/recovery/handoff independently reviewed with existing $0 resources.
-- [ ] MFA and all required authorization claims demonstrated without paid activation.
-- [ ] Original retrieval/content-validation/retention guarantees met; current architecture does not meet them.
-- [ ] All 15 original acceptance requirements evidenced, not merely renamed or waived silently.
-- [ ] Independent security/privacy review completed; no production launch on documentation approval alone.
-
-See [requirements-gap.md](requirements-gap.md). While these blocking requirements remain unmet, functional work is limited to local synthetic development. Hosting a non-collecting static layout is separate from enabling a real collector and still requires the revised-design review before deployment.
+No database migration/data move is proposed. Dedicated empty database and app/site registration are future reviewed creations; the existing app and database remain in place.

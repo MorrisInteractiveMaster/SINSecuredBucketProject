@@ -1,4 +1,4 @@
-# Initial screen layouts — Firebase Spark revision
+# Initial screen layouts — Named Blaze database revision
 
 Open `design/index.html` locally. This preserves the 14-state layout prototype with MI branding and responsive CSS. It remains non-collecting: example-domain emails, disabled inputs/actions, no backend/network/storage, no SIN or private key. Its screen selector is review-only, not contractor navigation. No live deployment is authorized until the revised design is reviewed.
 
@@ -32,3 +32,8 @@ For Phase 2, semantic labels, described-by validation, error-summary focus, aria
 Support keyboard navigation, 200% zoom, reduced motion, screen readers and mobile numeric keyboard. Local display clearing on blur/timeout is best effort, not a one-time or anti-copy control. No persistent Firebase cache/drafts, service worker, analytics, error input capture, print/download/CSV feature or private key in hosted app. Single-record local ciphertext handoff is unresolved and disabled.
 
 Only the review-screen selector and preview navigation operate. Disabled buttons do not simulate real authentication, submission, retrieval or disposal. See [requirements-gap.md](requirements-gap.md) for preserved security requirements that remain unmet.
+
+
+## Named-database revision
+
+All 14 screen concepts and CSS are preserved. Only the review badge and welcome notice change to reflect the existing Blaze project and disabled cloud collection. No new navigation or DB selector is exposed. Future SDK operations must use `mi-sin-portal` explicitly; this static layout still makes no network/storage calls. Separate database/site registration does not grant shared Firebase users portal access. See [database-isolation-plan.md](database-isolation-plan.md).
