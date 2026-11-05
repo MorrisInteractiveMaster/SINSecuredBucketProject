@@ -1,32 +1,34 @@
-# Initial screen layouts
+# Initial screen layouts — Firebase Spark revision
 
-Open `design/index.html` locally. This is a non-collecting, responsive design review, with a screen selector to inspect each state. All email addresses use reserved example domains, SIN entry is disabled, and reveal contains a text placeholder only. No mail, storage, API, analytics or external asset calls. It is not an operational portal.
+Open `design/index.html` locally. This preserves the 14-state layout prototype with MI branding and responsive CSS. It remains non-collecting: example-domain emails, disabled inputs/actions, no backend/network/storage, no SIN or private key. Its screen selector is review-only, not contractor navigation. No live deployment is authorized until the revised design is reviewed.
 
-## Visual system
+## Visual system preserved
 
-Charcoal outer shell; white main cards; thin neutral borders; 20px cards and 8px controls; Murrey primary actions; dark teal helper text on light teal; no decorative imagery or animation. Plain text organization identification is explicitly not a substitute logo. Replace its slot with the approved original asset, preserve proportions/clear space, and load Visby CF only with valid web license. Use system-ui fallback now. Body text 16px, headings 1.2 line height, sentence case, visible blue focus outline, 44px minimum controls. Do not use Robin Egg Blue as small white-button text without contrast verification.
+Charcoal header/outer framing, white form cards, thin borders, Murrey primary buttons, dark teal on light teal, restrained blue focus outlines, sentence-case headings, no animation/decorative imagery. Card/control radii and mobile breakpoint are retained. Plain text organization identification is a labelled logo-asset slot, not a recreated logo. Use genuine approved original proportions/clear space when available. System-ui fallback remains until legally available Visby CF Regular/Demi Bold/Extra Bold is supplied. Do not copy Altitude's serif typography, mountain graphics or brand marks.
 
-Contractor screens use one 560px main card, responsive padding and a three-step text indicator. Administrator views use a wider desktop content area; on mobile status metrics stack and the invitation table scrolls inside its own labelled region. Prototype navigation is review-only and must never be present in the actual contractor flow.
+Contractor layouts use one 560px main card, three-step text indicator and responsive padding. Admin screens use wider content with stacked metrics and internally scrollable labelled tables on mobile. Body 16px, headings 1.2 line-height, 44px controls, visible focus. Device/contrast/screen-reader verification remains pending for the functional build.
 
-| View | Layout and intended production action |
+| View | Adapted behavior / limitations |
 | --- | --- |
-| Secure invitation | Welcome, explanation, approved-email label, send-code action; link possession alone grants no form access |
-| Email verification | Single labelled OTP field (paste supported), expiry/cooldown hints, verify/resend; server errors announced without leaking other recipients |
-| SIN submission | Read-only verified email, password-style numeric input, accessible show/hide button, purpose/retention/contact notice; entry disabled in prototype |
-| Review before submission | In-session editable review, explicit final confirmation; actual number never appears in URL or saved page; prototype contains no digits |
-| Submission confirmation | Exact “Your information has been submitted securely.” plus no further action message; no number or last four |
-| Expired/invalid invitation | Neutral unavailable message, contact MI through approved channel; no email enumeration, no insecure reactivation |
-| Already completed | A completed message, no redisplay/change; instructions to contact MI if correction needed |
-| Administrator login | Entra sign-in only; no password fields; explains assigned access and additional reveal verification |
-| Dashboard | Six metrics, recent metadata statuses and simple navigation; no SIN fragments |
-| Invitation management | Bounded email input and explicit send/revoke/reissue in production; table with created/expiry/status; no real sending in design prototype |
-| Submission status | Random reference, status, retention deadline and role-dependent actions; no automatic decryption |
-| Authorized retrieval | Recent step-up state, record-specific deliberate confirmation, warning about one delivery attempt; placeholder for brief reveal |
-| Disposal confirmation | Approved destination and transfer attestation; separate active deletion and key-retirement statuses; no promise of immediate backup erasure |
-| Audit activity | Timestamp, actor role/ID, event, random reference and outcome only; no raw request details |
+| Secure invitation | Manual MI instructions plus application link; email/password sign-in and verified identity required, link alone insufficient |
+| Email verification | Firebase verification link replaces custom numeric OTP; refresh user/token to check verified status and active invitation; quota-aware resend |
+| SIN submission | Same minimal read-only identity, masked numeric entry/show control and privacy-purpose notice; entry stays disabled pending review |
+| Review before submission | Local review/correction, explicit final confirmation, no persistent draft or URL data |
+| Submission confirmation | Retain exact “Your information has been submitted securely.” as an illustrative state, no SIN/last four; no success generated by prototype |
+| Invalid/expired invitation | Neutral unavailable message and approved MI contact process, no email enumeration |
+| Already completed | No redisplay/change; consumed invitation remains unavailable even if payload later deleted |
+| Administrator login | Firebase account/email-password layout with role limitations; no automatic privilege for existing shared-project users; no claim of verified MFA |
+| Dashboard | Six neutral status metrics, no payload reads; handling/transfer-attestation language rather than guaranteed one-time reveal |
+| Invitation management | Bounded approved-address input, purpose/expiry and status table; save approved invitations, then manually send existing corporate-mail instructions |
+| Submission status | Random reference, handling/recovery/disposed status and retention target; metadata does not prove decryption, deletion deadline or external transfer |
+| Restricted local handling | Replaces one-time-retrieval promise. Shows role/assignment, unverified MFA and repeatable ciphertext/decryption limits; no hosted private-key import or reveal |
+| Disposal confirmation | Paired active deletion/status/event and transfer attestation; separately documents offline copies/keys/provider residue; no managed per-record key-retirement claim |
+| Audit activity | Allowed state-change events only; no automatic read/offline decryption audit; no sensitive values, tokens or raw request detail |
 
-## Interaction and accessibility requirements for Phase 2
+## Functional interaction requirements
 
-Use semantic labels, described-by error hints, focus summary after failed validation, aria-live for send/expiry/success and aria-pressed on visibility control. Do not announce a revealed SIN automatically to the entire screen-reader live region. OTP paste and password-manager interaction require real device tests. Support 200% zoom, keyboard-only navigation, reduced motion and session-expiry messages. Re-auth redirects must not preserve SIN form values. Do not persist drafts, use service workers, prefetch reveal routes, or SSR plaintext.
+For Phase 2, semantic labels, described-by validation, error-summary focus, aria-live for verification/success/session status and aria-pressed visibility toggle. Do not automatically announce a SIN in a live region. Password controls use appropriate password-manager attributes; never send passwords through manual invitations. Verification action URLs contain only Firebase action state, no email or SIN supplied as continuation parameters. After verification reload and refresh token; don't trust a local “verified” flag.
 
-The current layouts intentionally demonstrate visual arrangement only. They do not simulate successful authentication, an actual reveal, or final deletion.
+Support keyboard navigation, 200% zoom, reduced motion, screen readers and mobile numeric keyboard. Local display clearing on blur/timeout is best effort, not a one-time or anti-copy control. No persistent Firebase cache/drafts, service worker, analytics, error input capture, print/download/CSV feature or private key in hosted app. Single-record local ciphertext handoff is unresolved and disabled.
+
+Only the review-screen selector and preview navigation operate. Disabled buttons do not simulate real authentication, submission, retrieval or disposal. See [requirements-gap.md](requirements-gap.md) for preserved security requirements that remain unmet.

@@ -1,34 +1,41 @@
-# Phase 1 — Threat model and remaining risks
+# Firebase Spark threat model and remaining risks
 
-Status: proposed controls, not verified implementation. Assets: SIN, encryption material, email identity, invitation credentials, MFA/session evidence, lifecycle tombstones, mail trust and audit integrity. Adversaries include link recipients, mailbox attackers, malicious staff, external attackers, compromised dependencies and privileged platform operators.
+November 5, 2026 · Proposed controls only, not verified implementation. No real collection. Assets include SIN plaintext in endpoint memory, ciphertext, approved emails, Firebase bearer tokens, invitation/role assignments, offline private keys, consumption tombstones and integrity of the hosted app/public key. Threat actors include unapproved users, compromised mailboxes, malicious invited users, ordinary/privileged administrators, unrelated applications in the project, compromised dependencies and browser extensions.
 
-| Threat / entry point | Proposed controls | Verification / residual risk |
+| Threat / entry point | Proposed control / test | Residual risk and disposition |
 | --- | --- | --- |
-| Forwarded or stolen invitation | Approved-email OTP, short expiry, token digest, revocation revision | Forward link to different mailbox; reject form access. Compromised authorized mailbox defeats both steps |
-| Email scanner consumes link | GET never consumes; fragment exchange grants only pending session | Scanner and browser tests; mail provider may retain link |
-| OTP guessing, replay or spam | HMAC with managed pepper, atomic counters, expiry, resend invalidation, shared quotas | Concurrent verify/resend tests; network-wide abuse remains possible |
-| Email enumeration | No self-enrolment; generic invitation errors; no public email lookup | Compare status/timing and messages; admin email list remains personal data |
-| Cross-record access (IDOR) | Every endpoint binds invitation/session/role, reference is not authority | Swap references, cookies, revision and grant IDs |
-| Duplicate submissions / replay | Unique invitation FK, locked transaction, one-use signed attestation nonce | Real PostgreSQL race tests with many concurrent clients and revoked sessions |
-| Malformed crypto / forged key source | Pinned key version, fixed schema and algorithms, AAD/tag verification | Tamper each field, swap environments/records, reject oversized bodies |
-| Invalid SIN in encrypted submission | Isolated server validator; checksum not identity verification | Malicious client bypasses JS; validator must reject before commit |
-| Database/backup theft | Authenticated envelopes; private managed keys separate from DB | Inspect seeded database, backups and WAL; metadata and traffic remain sensitive |
-| XSS / compromised frontend release | Nonce CSP, no third-party code, review, pinned dependencies | CSP/XSS tests and release provenance; malicious origin can steal future inputs |
-| Ordinary admin reveals | Explicit retriever role; object-bound fresh step-up; constrained worker | Negative RBAC tests for every protected route, not just hidden UI |
-| Forged or stale MFA | OIDC validation, protected auth context and fresh challenge evidence | Tenant test where context has no policy must fail readiness; token iat alone fails |
-| Reveal replay / concurrent workers | Commit irreversible claim before unwrap, UNIQUE claim, no resume | Instrument unwrap count under races; require at most one attempt |
-| Lost response / crash after claim | Terminal recovery state, new contractor submission | Fault injection before/after DB commit and vault call; availability sacrificed deliberately |
-| Restored backup resurrects reveal | External consumption/disposal ledger, quarantined restore | Restore old backup, replay tombstones before traffic/key access; fail closed on missing ledger |
-| Insider / platform compromise | Separation of roles/identities, PIM, limited key grants, audit alerts | Infrastructure admin can still bypass app controls; process and access reviews required |
-| Telemetry or browser leakage | Allowlisted events, no body capture, no storage/URLs, no-store | Inject synthetic canaries, inspect ingress/APM/error/mail/CI artifacts; extensions remain uncontrolled |
-| Premature deletion / false transfer | Record-specific transfer attestation, approved destination code | Double submission of disposal safe; expiry does not mean transfer completed |
-| Retention/key cleanup failure | Idempotent tasks, overdue access denial, alerts, backup schedule | Clock-controlled tests and vault failure injection; soft-deleted keys/backups persist |
-| CSRF / fixation / clickjacking | Origin + CSRF, cookie rotation, frame-ancestors none | Cross-origin mutation, planted session, iframe and redirect tests |
-| Cloud/CI credential compromise | OIDC subject restrictions, protected environment, no PR cloud tokens | Review federation claims, workflow permissions, action pins and artifact secret scans |
-| Service outage / cost exhaustion | Quotas, shared rate limiting, send/key limits, bounded queries | Load/failure tests; lockouts and unavailable mail may require staff support |
+| Someone types another person's email | Signed Firebase token email_verified=true, exact invitation match, permitted provider, active expiry, Rules ownership checks | UI labels are not authentication; test direct SDK/REST access with forged payload fields |
+| Unverified signup / existing other-app user | No portal roles from shared generic claims; invitation-specific authorization; no anonymous access | Unknown people may create Auth accounts; project-wide Auth/provider quota shared |
+| Forwarded link / guessed invitation | Random ID is routing only; identity and invitation checked in Rules | Mailbox compromise defeats verification; no custom link-only access or OTP backend |
+| Email change, stale token, recreated UID | Immutable submitted UID/invitation slot; role/invitation checks on every operation; recent auth_time | Signed tokens/refresh tokens have provider lifetimes; UI sign-out cannot revoke already copied data |
+| Duplicate or concurrent submission | Deterministic slot/payload paths, create-only, getAfter paired writes and permanent slot | Planned emulator race tests; malformed allowed ciphertext can consume a legitimate invitation |
+| Malicious invited client submits plaintext/garbage | Normal UI encrypts, Rules restrict Bytes type/length and fixed schema/key ID | Rules cannot prove encrypted contents/checksum. **Unmet requirement; no real writes enabled** |
+| Cross-record read or query | Contractor no payload get/list/update; metadata get only matching invitation; no broad lists | Query filters are not field redaction; separate documents required |
+| Shared Rules expose portal | Inspect deployed full rules; test overlap and existing app fixtures | Allows OR together; namespace/new web app is insufficient; no integrated rule proposal before inspection |
+| Existing server/IAM client bypass | Inventory project/service-account privileges and app backends; do not embed Admin SDK credentials | Server SDK/IAM bypasses Rules. Project administrators can alter data/Rules/code, including roles |
+| Ordinary manager grants itself ciphertext/key access | No client writes to roles/policy; independent assignment authority, UID-bound scoped roles | Project owners retain power; offline key custody uses separate trusted people/process |
+| Compromised hosted frontend / substituted public key | Strict built CSP, no third-party scripts, dependency/source reviews, public-key fingerprint verification | Frontend can exfiltrate future inputs or replace key; browser public-key encryption cannot defeat compromised origin |
+| Stolen private key or backup | Existing approved offline encrypted storage, independent passphrase, separate custody/recovery copy | Key + retained ciphertext decrypts repeatedly. No remote revocation or non-exportability of imported source key |
+| Offline utility compromise / extensions | Separate verified local artifact/profile, no network during key import, no storage/dumps | Browser/OS malware can read key/plaintext; non-extractable CryptoKey does not protect original import bytes |
+| RSA misuse / mismatched record | Fixed RSA-OAEP SHA-256 parameters/label, ciphertext/message size bounds, versioned context checked after decrypt | Encrypting with a public key is not sender authentication; Rules cannot inspect encrypted bindings |
+| Lost key / failed handoff | Synthetic recovery drills; record key/reference inventory without SIN; new collection if justified | Data is unrecoverable without key. Safe single-record handoff is unresolved; retrieval disabled |
+| Replayed read or decryption | Scoped assigned get, no list, short assignment/auth time; operational handling claim | No enforced one-time retrieval: read has no state mutation, retained ciphertext can be reused offline |
+| Fresh password mistaken for MFA | Check signed auth_time for reauthentication; inspect Identity Platform/TOTP at no cost before considering | No verified MFA configuration; token iat/checkbox/private-key possession alone not server-enforced MFA |
+| Disposal claimed without official transfer | Authorized record-specific attestation plus atomic payload-delete/tombstone/event | Rules cannot verify the external transfer; state is an attestation only |
+| Deadline without deletion | Rules deny future access using request.time; manual restricted cleanup and owner schedule | No trusted no-cost TTL/background worker. Data may outlive deadline; not a guaranteed retention control |
+| Old copy/restored metadata reopens submission | Permanent slot/tombstones; prohibit their client deletion; review any operator recovery | Project owner can restore/change state; copied ciphertext remains decryptable. No paid backup/PITR activation |
+| Logs, browser persistence or telemetry | Auth inMemoryPersistence; Firestore memory cache; no Analytics/performance/input recording; no console bodies | Inspect actual browser/SDK/shared integration behavior; GC clearing is best effort, provider operational data remains |
+| Audit bypass | Atomically paired append-only state-change events with actor/time/enum constraints | Reads cannot emit Rules events; offline decryption invisible; privileged operators can alter data |
+| Abuse / free quota exhaustion | Bounded queries/writes, provider throttles, optional no-billing App Check after shared-project review | No strong centralized rate limiting; other apps may become unavailable. Never auto-upgrade |
+| Rules/Hosting deploy clobbers other app | Read existing config, dedicated Hosting target, full merged Rules review/regression, no deploy this phase | A wrong project/target or broad replacement rule can expose or break other apps |
+| Token/credential in CI | No live Firebase credentials in PR checks, demo emulator project, pinned dependencies/actions | Firebase public SDK config is not a permission boundary; Admin SDK credentials must never be shipped |
+| Clickjacking / browser attack | HTTPS, frame-ancestors none, restrictive CSP, no untrusted HTML/remote script | Auth tokens are SDK bearer tokens rather than HttpOnly cookies; direct API access must still be denied by Rules |
+| Residency mismatch | Verify actual immutable Firestore region and Google processing terms | Auth processes in US; Hosting global; Canadian Firestore does not imply Canada-only service |
 
-## Review requirements
+## Independent review focus
 
-Independent reviewers should inspect the crypto protocol and Web Crypto/Key Vault interoperability, authorization and step-up tenant policy, race/restore invariants, cloud least privilege, telemetry behavior, and disposal including provider retention. Conduct an authenticated penetration test and privacy impact assessment against the actual staging configuration. A design document or automated scan is not a substitute.
+Review actual deployed Rules (including every overlapping match), project IAM/server access, email verification/provider binding, Auth/Firestore persistence, atomic create/delete contracts and rule-call limits, public-key authenticity, offline custody/import/decryption/handoff, quotas and external data processing. Inspect a synthetic release candidate rather than signing off solely on documents. No real SIN fixtures, logs or screenshots in public issues.
 
-Unresolved before production: legal eligibility rules, privacy notice/contact, approved official destination, hosting and email processing terms, per-record HSM key cost/quotas, Entra licenses and freshness guarantees, operational ownership, incident response, monitoring coverage, retention and restored-backup reconciliation. There is no claim of compliance certification, guaranteed screenshot prevention, exactly-once human viewing, perfect memory erasure or immediate backup destruction.
+[requirements-gap.md](requirements-gap.md) lists unmet original requirements and release consequences. No production launch unless required privacy, authorization, encryption, retrieval and disposal guarantees are actually demonstrated. Current gaps cannot be converted into passes by renaming status fields or hiding buttons.
+
+Primary references: [Rules conditions and server bypass](https://firebase.google.com/docs/firestore/security/rules-conditions), [Rules behavior](https://firebase.google.com/docs/rules/rules-behavior), [atomic operations](https://firebase.google.com/docs/firestore/manage-data/transactions), [Auth persistence](https://firebase.google.com/docs/auth/web/auth-state-persistence), [privacy and processing locations](https://firebase.google.com/support/privacy). Reviewed November 5, 2026.

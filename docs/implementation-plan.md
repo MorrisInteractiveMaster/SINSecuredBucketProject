@@ -1,75 +1,82 @@
-# Phased implementation and acceptance plan
+# Firebase-only phased implementation and acceptance plan
 
-## Phase 1 — This review package
+November 5, 2026 · Incremental infrastructure budget **CAD $0**, Spark only. Keep PR #1 draft; no merge, live deployment or service changes before revised-design review. A design review is not production security/privacy approval.
 
-Delivered: repository/brand inspection, architecture and data flow, threat model, privacy decision register, operating cost allowances, proposed policy values, responsive screen-layout prototype and acceptance mapping. No backend, authentication, encryption implementation or deployed collector exists yet. All security properties below are planned, not proven by this package.
+## Phase 1 — Revised proposal (this package)
 
-Reviewed references: all four Altitude files and all 18 pages of the MI brand guide (text extraction). The guide establishes Visby CF Regular for body, Demi Bold headings and Extra Bold emphasis; sentence-case headings, original logo proportions/clear space and the MI palette take precedence over Altitude. Altitude's serif typography, mountain art and microscopic labels are excluded. Standalone genuine logo and licensed font assets remain to be supplied through an approved source; do not commit the entire brand PDF to the public repository.
+Retain MI colours, restrained Altitude-inspired structure, responsive layout, 14 screen concepts, legal-purpose analysis and all 15 original acceptance requirements. Replace paid infrastructure with React/Vite/TypeScript/Tailwind, Firebase Web SDK, Auth, Firestore/Rules, static Hosting and Web Crypto. Add project-investigation and requirements-gap registers, no-cost evidence, offline-custody design and clearly limited handling/disposal semantics.
 
-## Phase 2 — Synthetic functional MVP
+Original brand review remains valid: Visby CF Regular body, Demi Bold headings/Extra Bold emphasis when licensed; sentence case and MI logo rules override Altitude. Original logo assets and licensed font binaries remain unavailable. Use plain labelled organization text and system-ui, not a reconstructed logo or unlicensed font.
 
-1. Prove Web Crypto AES-GCM + RSA-OAEP-256 interoperability with Key Vault and canonical AAD; measure per-record key quotas and cost. Prove Entra step-up with actual tenant policies and freshness evidence. If either proof fails, record the reviewed alternative before implementing real collection.
-2. Create Next.js/TypeScript/Tailwind app with no external script/font calls. Select currently supported dependencies, pin a lockfile and security headers. Keep prototype separate from actual routes.
-3. Add versioned PostgreSQL migrations, constrained DB roles, sessions, invitation/OTP tables, counters, reservations, envelope tables and independent consumption/disposal ledger. Test against actual PostgreSQL, not an in-memory substitute for races.
-4. Implement tenant-bound server OIDC and app roles. Add invitation creation, bounded bulk input, dispatch leases, token/OTP verification, session rotation, revoke/reissue and status endpoints.
-5. Implement browser envelope encryption, isolated validation worker and atomic submission transaction. Use synthetic fixtures only; nonproduction server accepts only a closed set of fixture envelopes/identities and denies arbitrary SIN values even if the UI is modified.
-6. Implement metadata-only dashboard, auditor view, record-specific step-up, claim-before-unwrap retrieval, failed-reveal recovery and transfer/disposal tasks. Never add a debug decrypt endpoint.
-7. Provide actual environment variable template without credentials; runtime config must validate HTTPS origin, tenant IDs, key endpoint allowlist, approved notice/contact/purpose, protected authentication context, configured policies and provider mode. Placeholder values and simulation adapters cannot pass a production startup check.
-8. Complete administrator instructions and integration tests in synthetic Azure staging, with no production federation or data.
+Live project configuration remains uninspected pending Firebase connection; Default Gemini is first candidate, no project selected. No integrated live Rules patch, database, web app, Hosting site or deploy workflow is created during Phase 1. Structural prototype checks are not security-rule tests.
 
-Deliverables at Phase 2: working application source, mobile contractor screens, admin dashboard, secure APIs/workers, real migrations, tests and synthetic staging integration. These are not included in Phase 1.
+## Phase 2 — Local synthetic functional MVP
 
-## Phase 3 — Hardening and independent review
+1. Complete read-only [project investigation](project-investigation.md) in order before considering later live synthetic hosting. Do not hold local development up on this connection. Do not turn a failed query into proof a service is absent.
+2. Set up React/Vite/TypeScript/Tailwind and modular Firebase SDK with a lockfile. Minimum dependencies: react/react-dom/firebase; build TypeScript/Vite/Tailwind; tests use `@firebase/rules-unit-testing` plus a standard JS runner. Use Firebase CLI + a supported JDK for the local Firestore emulator; pin supported versions at implementation. No server framework or paid remote runner.
+3. Use a `demo-mi-sin-portal` project ID and explicit Auth/Firestore emulator endpoints bound to local interfaces. Refuse to initialize a non-demo project in the synthetic build; configure SDK emulators before first network use. Test code must fail if emulator environment variables are missing. No live Firebase API keys/credentials are needed for demo emulator tests.
+4. Implement a **standalone emulator-only** schema/rules proof from the architecture contract. Use default-deny for the isolated test model; it is not a replacement for any existing project's Rules. Seed roles/policy/fixtures only via test setup with `withSecurityRulesDisabled`; all assertions use normal authenticated/unauthenticated clients. Never run real tests with an Admin SDK that bypasses Rules.
+5. Auth flow: email/password, Firebase verification link, `reload` + ID-token refresh, exact signed verified email and provider binding. Emulated verification does not prove production deliverability or MFA. Manual corporate invitation instructions replace an automated portal sender. No password/private key/SIN in invitations.
+6. Implement metadata-only dashboard, invitation expiry/revocation/reissue, deterministic submission slot/payload batch, scoped statuses and paired disposal. Contractor cannot read payload even to check submission success; read own status instead. Preserve tombstones. Never use `addDoc` for an unconstrained number of submissions.
+7. Implement Web Crypto proof with synthetic plaintext and freshly generated disposable test keys only. No private key fixtures committed. Test RSA-OAEP SHA-256 interoperability, label/context, UTF-8 size, wrong key and tampering; acknowledge arbitrary-byte writes through malicious direct clients cannot be identified as invalid encryption by Rules.
+8. Prototype the separate offline local utility and custody workflow using synthetic keys only. Prove encrypted key format/unlock compatibility, no network during import, no private-key storage/console output and safe context checks. No hosted private-key upload form. Single-record ciphertext handoff remains an unresolved review requirement; no general export/download feature.
+9. Test memory-only Auth/Firestore cache, no offline drafts, safe errors and CSP in actual built Vite output. UI idle sign-out supplements request.time/auth_time checks but does not become a central session service. No force-refreshed token masquerading as fresh authentication.
+10. Prototype shows “handling claimed” and “transfer attested”, never “one-time reveal enforced”. All unmet guarantees remain visible in the readiness register. No real-project encrypted writes in a supposedly synthetic-only demo because Rules cannot determine the hidden data is synthetic.
 
-Run authorization matrix, crypto tampering/interoperability, concurrent transaction and crash tests; verify restoration cannot resurrect reveal/disposal. Review logs at every configured hop, not only application logger output. Implement incident response, operator role controls, alerts and cleanup. Dependency review, CodeQL, secret scanning and external authenticated penetration testing. Record findings/remediation and residual risks in a restricted operational system; do not include sensitive evidence in public GitHub issues.
+Expected local commands after dependency setup: `firebase emulators:exec --project demo-mi-sin-portal --only auth,firestore 'npm run test:rules'`; `npm run test:crypto`; `npm run build`. These are planned Phase 2 commands, not executed during this documentation revision. Full browser/system checks require supported browser tooling and manual accessibility tests.
 
-Release evidence must identify the tested artifact SHA, schema version, tenant-policy configuration, dependency inventory and infrastructure version. Independent privacy and security sign-off are required before enabling any real collection.
+## Phase 3 — Security/rules proof and independent review
 
-## Phase 4 — Deployment preparation, then gated launch
+Test the entire Rules permission matrix, direct SDK calls, races, revoked invitations/roles and failed operations, not hidden UI only. Include unsupported properties as explicit failing requirements rather than weaken tests. Read deployed Rules and original app regression fixtures before proposing any future integration. Simulate a permissive recursive allow to show namespace-only protection fails. Verify changed Rules preserve other app authorization; do not deploy a standalone test ruleset to production.
 
-Prepare Bicep modules for regional web/worker apps, identities, private network/endpoints, PostgreSQL, Key Vault, audit storage, monitoring, mail integration and scheduled cleanup. Verify exact service SKUs/regions rather than assuming availability. No cloud resources or billable services are provisioned during Phase 1.
+Inspect real-project settings read-only for Auth/Identity Platform/TOTP, quotas, regional privacy, IAM and other backend clients. TOTP cannot be assumed paid or already safe/free; prove no-billing configuration and signed second-factor/freshness semantics before proposing a change. No change to providers, users, rules or billing as part of this inspection. Emulator claims are test inputs, not proof Firebase will issue corresponding real MFA evidence.
 
-Proposed GitHub Actions separation:
+Independent reviewers examine the release artifact, Rules, key custody and actual account settings. If original non-negotiable guarantees remain unmet (one-time decryption, trusted encrypted-input validation, automated disposal), the outcome is synthetic-only. No paid workaround, compliance badge or “production-ready” claim.
 
-- PR verification: read-only repository token; typecheck, security-focused unit tests, PostgreSQL integration/race tests, production build, dependency/secret scanning and browser accessibility tests. Synthetic fixtures only. No cloud OIDC or deployment permissions.
-- Main staging deployment: build once, produce SBOM/provenance, scan and deploy that immutable artifact through a staging-bound OIDC subject. Apply reviewed migrations with separate database migration identity.
-- Production: manual workflow + protected GitHub environment reviewer gate, exact release artifact SHA, independent-review evidence and privacy policy version. Federation restricts repository, branch/environment and audience. Deployment identity cannot unwrap keys or read business records. Never deploy untrusted PR code with privileged credentials.
-- Startup and runtime: disabled unless reviewed configuration is complete. `NODE_ENV=production` or a single boolean approval flag is not security approval. Record approvals tied to artifact and deployed configuration and test disabled-mode behavior at ingress and API/worker layers.
+## Phase 4 — Preparation only after revised-design review
 
-Actual workflows and infrastructure templates belong to Phase 4; Phase 1 intentionally does not add an executable deployment path. Merge of this design does not authorize production collection or spending.
+When and only when the candidate is confirmed Spark/no billing and owners approve a non-disruptive setup, prepare a distinct web-app registration and dedicated Hosting target on a free Firebase domain. Do not use App Hosting or connect Functions/Run. Shared Auth authorized domains, templates and providers require owner review. Preserve default site and other app configs. No service creation/deploy occurs in this phase of work.
 
-## Acceptance mapping
+Future configs: explicit reviewed `firebase.<portal>.json` target, merge-aware complete Firestore Rules and scoped index diff, credential-free `.env.example` with public Firebase config placeholders, emulator-only mode and restrictive Hosting headers. Public Firebase config is not a secret; private keys and service-account credentials are never VITE variables. Production-blocking Rules gate is owner-controlled and not just a client boolean. If existing broad Rules override it, no live namespace can be enabled safely until integration is resolved.
 
-| # | Required evidence / automated test | Phase |
-| --- | --- | --- |
-| 1 Unknown email cannot enter | Anonymous/arbitrary-email requests, forwarded invitation, swapped invitation/session IDs all denied | 2–3 |
-| 2 Expired invitation rejected | Database-clock boundary and post-verification expiry tests, including cleanup delay | 2 |
-| 3 OTP expires/no replay | Time controls, race verification, resend invalidates old code, invitation-wide counters persist | 2–3 |
-| 4 Invalid SIN rejected | Separators, forbidden Unicode, wrong length/checksum, all-zero; bypass client and submit malformed encrypted payload to validator | 2 |
-| 5 Submit once | Normal retry returns completed status; revoke/reissue/refresh never changes submitted value | 2 |
-| 6 Concurrent submission safe | At least 20 competing real PostgreSQL requests: one submission and one consumed invitation, losers cannot insert | 2–3 |
-| 7 No plaintext at rest | Synthetic canary inspection of DB, WAL/backup test copies, artifacts, browser storage and mail; expected ciphertext only | 3 |
-| 8 Ordinary admin denied | Every role × protected endpoint matrix; IDs and hidden UI manipulated; worker caller identity checked | 2–3 |
-| 9 Fresh step-up required | Real Entra policy integration: absent/stale context, unprotected context and fresh token without fresh auth all fail | 3 |
-| 10 Reveal cannot replay | Concurrent grants/claims, instrumented unwrap count, replay after timeout; crash before/after claim/vault call; no automatic resume | 2–3 |
-| 11 Deletion/expiration | Deadline denial, idempotent active purge/key task, failed cleanup alert, quarantine restore with external tombstone replay | 3 |
-| 12 Logs/errors contain no SIN | Synthetic canaries through invalid requests/errors; scan configured ingress/APM/worker/DB/mail/Actions outputs; permit only event schema | 3 |
-| 13 Mobile and desktop | Playwright at 390px and 1440px; actual iOS/Android numeric keyboard and device checks; no full-page horizontal overflow | 2–3 |
-| 14 Keyboard/contrast | Automated accessibility scan plus manual focus/error/zoom/screen-reader testing; visible focus, 44px targets, WCAG AA contrast | 2–3 |
-| 15 Fail-closed production | Missing/placeholder policy/tenant/key/contact configs fail startup; simulation adapters and arbitrary synthetic-mode input denied server-side; PR cannot deploy | 3–4 |
+GitHub Actions later: run emulator/crypto/build/accessibility checks with read-only repo permissions and demo credentials; no cloud auth on PR workflows, no pull_request_target running untrusted code, no automatic deployment on PR/main or Firebase automatic framework rollout. Any later reviewed deployment uses explicit project/site, minimal available deployment authorization, free included CI resources only and a protected manual approval path where available without payment. Do not assume repository policy features are included: if unavailable, retain manual owner-controlled local deployment. No deploy workflow is added now; never activate billing/OIDC permissions to solve a $0 constraint.
 
-## Readiness checklist — all pending
+## Original acceptance criteria — preserved with revised disposition
 
-- [ ] Legal purpose and SIN-versus-BN eligibility approved; privacy notice/contact published and versioned.
-- [ ] Roles/official destination/transfer recovery ownership approved and staff trained.
-- [ ] Region, processors, contracts, budget and backup/key retention approved.
-- [ ] Genuine logo and licensed web-font assets validated.
-- [ ] Backend, schema/migrations and Azure integration implemented using synthetic data.
-- [ ] All 15 acceptance requirements demonstrated against the release candidate.
-- [ ] Independent crypto/security/privacy review findings resolved or explicitly accepted.
-- [ ] Fresh MFA tenant policy verified; operational role escalation and key administration controlled.
-- [ ] Backup restoration, consumption ledger, cleanup, vault failure and incident drills pass.
-- [ ] CI protections, OIDC boundaries, dependency/secret checks and immutable release evidence verified.
-- [ ] Production remains disabled until the reviewed release and actual configuration receive approval.
+| # | Original requirement | Firebase test/evidence needed | Current disposition |
+| --- | --- | --- | --- |
+| 1 | Unknown email cannot access form/data | Emulator unauthenticated/unverified/unapproved/existing other-app users; swap IDs and typed email; direct client requests denied | Planned Rules proof |
+| 2 | Expired invitations rejected | request.time bounds, revoked state, stale token, known reference and delayed cleanup | Planned Rules proof |
+| 3 | Verification codes expire and cannot replay | Custom numeric OTP replaced by Firebase verification link; test Auth action-link replay/expiry and token refresh; provider controls limits | Explicit flow change, production behavior unverified |
+| 4 | Invalid SIN rejected | UI length/Luhn/separator/Unicode tests; direct malformed encrypted write bypass must be acknowledged | **Backend content validation not achievable in Rules** |
+| 5 | Contractor submits once | Deterministic slot/payload, create-only; refresh/reissue/new UID cannot reuse; contractor no read/update | Planned Rules proof |
+| 6 | Concurrent writes cannot duplicate | At least 20 simultaneous authorized batches, exactly one payload/slot/status success; failed/partial writes do not mark submitted | Planned emulator race proof |
+| 7 | Database contains no plaintext SIN | Crypto fixtures + emulator stored Bytes inspection; malicious clients can put arbitrary content in allowed Bytes | Normal-client proof possible; **all-writers guarantee unmet** |
+| 8 | Ordinary admin cannot retrieve | Role/assignment get-vs-list matrix; no generic other-app admin/role self-promotion; no key in hosted portal | Planned Rules proof; IAM bypass risk |
+| 9 | Permitted admin completes fresh MFA | Actual no-billing Identity Platform/TOTP configuration + signed second factor and auth_time checks; reauth password alone fails MFA | **Not demonstrated; real reads disabled** |
+| 10 | Retrieval cannot replay after consumption | Demonstrate repeat-read/retained-ciphertext counterexample, distinguish claim transition from data read | **Cannot guarantee; real one-time retrieval blocked** |
+| 11 | Deletion/expiry follows approved retention | Paired payload delete/tombstone/event, expiry denies read, no recreation; offline/no-staff test shows purge doesn't run | **Automatic deadline deletion unmet** |
+| 12 | Logs/errors never include SIN | Scan synthetic browser/error/test/build artifacts and SDK persistence; no third-party telemetry; safe fixed messages | Planned normal-client evidence; malicious origin/extension risk |
+| 13 | Mobile/desktop interface | Supported browser tests at 390px/1440px + iOS/Android form behavior, no page-wide overflow | Responsive design retained; device tests pending |
+| 14 | Keyboard/contrast | Labels, focus summary, visibility aria-pressed, 200% zoom, screen reader/manual AA contrast | Pending accessible functional build |
+| 15 | Production cannot use insecure defaults | No live payload writes, owner-controlled Rules/policy gate, demo-only build refuses real project, unknown project/plan stops deployment | Current design/prototype disabled; deploy guard integration pending |
 
-Phase 1 QA covers only documentation completeness, proposed-policy parsing and prototype structure. It cannot demonstrate encryption, authentication or one-time semantics without the backend and actual services.
+## Rules test matrix for Phase 2
+
+Include unauthenticated, verified-but-uninvited, unverified invited, verified active invited, expired/revoked/consumed, other invitation/UID, verified unrelated-project-app user, invitation manager, assigned/unassigned ciphertext custodian, disposal officer, auditor and impersonated role-field clients. Assert exact get/list/create/update/delete outcomes for every namespaced path. Specific negative tests: extra/plaintext fields; oversized/wrong-type ciphertext; wrong key ID; client timestamp; altered email/owner/purpose/expiry; status-only submission; payload-only submission; slot deletion/recreation; submitted invitation reissue; deletion without tombstone/event; role self-grant; expired assignment; recent token iat but stale auth_time; replayed claim and repeated payload get. Demonstrate that read permission is reusable, not “passed one-time retrieval”.
+
+Use `assertFails`/`assertSucceeds` on normal SDK requests with rule coverage reports. Test verification/token refresh through the Auth emulator, and Rules with fabricated signed-claim test contexts; distinguish these from real-provider evidence. Run a separate combined test model using sanitized existing app fixtures after Rules inspection. No private live data exported to run tests.
+
+## Production readiness — blocked
+
+- [ ] Actual project is Spark/no billing; existing services/rules/IAM/usage inspected in required order.
+- [ ] No disruptive rules/Auth/Hosting change; owners approve integration; other-app regressions tested.
+- [ ] Legal need, SIN-versus-BN criteria, notice/contact and official destination approved.
+- [ ] Firebase region, US Auth/global processing and access terms accepted.
+- [ ] Offline keys/custody/recovery/handoff independently reviewed with existing $0 resources.
+- [ ] MFA and all required authorization claims demonstrated without paid activation.
+- [ ] Original retrieval/content-validation/retention guarantees met; current architecture does not meet them.
+- [ ] All 15 original acceptance requirements evidenced, not merely renamed or waived silently.
+- [ ] Independent security/privacy review completed; no production launch on documentation approval alone.
+
+See [requirements-gap.md](requirements-gap.md). While these blocking requirements remain unmet, functional work is limited to local synthetic development. Hosting a non-collecting static layout is separate from enabling a real collector and still requires the revised-design review before deployment.
