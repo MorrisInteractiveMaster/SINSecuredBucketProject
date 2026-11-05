@@ -1,5 +1,8 @@
 # Morris Interactive | Secure SIN Collection Portal
 
+**Phase 2.5 synthetic cloud test package is ready for review. Nothing has been deployed.** Follow the [beginner Cloud Shell launch/rollback guide](docs/cloud-test-launch.md) and [cost/IAM/dependency review](docs/cloud-test-review.md), plus the [41-test validation record](docs/phase-2.5-validation.md). The owner confirms existing portal resources/providers; cloud launch still requires actual region/IAM/billing/App Check checks and one explicitly approved administrator. Real SIN collection, reveal and disposal stay disabled. Earlier Phase 1/2 records below are retained as history.
+
+
 **Phase 2 local functional MVP · Microsoft/Google sign-in · approved-email allowlist · synthetic data only.**
 
 Implemented React/Vite screens, trusted callable authorization, CSV import/revocation, tenant-bound MI role checks, supplementary email proof and atomic encrypted submission. Start with [Phase 2 run instructions and limits](docs/phase-2-mvp.md) and [owner OAuth setup](docs/oauth-owner-setup.md). Production client access and callable operations are hard-disabled. No cloud Auth settings, resources, IAM or billing were changed; no merge or deployment was performed.

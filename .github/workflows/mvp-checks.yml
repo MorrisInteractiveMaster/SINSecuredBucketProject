@@ -1,8 +1,6 @@
-name: Local MVP checks
+name: Portal checks (Node 22)
 on:
   pull_request:
-  push:
-    branches: [phase-1/architecture-design]
 permissions:
   contents: read
 jobs:
@@ -21,8 +19,12 @@ jobs:
           java-version: '21'
       - run: npm ci --ignore-scripts
       - run: npm run build
-      - run: npm test
       - run: python3 scripts/check_phase1.py
-      - run: npm run test:mvp:local-http
+      - run: npm run test:all
+      - run: npm run check:cloud
+      - run: npm run prepare:cloud
+      - run: npm ci --ignore-scripts --prefix .deploy/functions
+      - run: node scripts/verify-cloud-package.mjs
+      - run: npm audit --prefix cloud-functions --audit-level=high
       - run: npm audit --audit-level=high
 # No secrets, cloud login, resource creation or deployment permissions/steps.

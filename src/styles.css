@@ -642,3 +642,28 @@ code {
     gap: 8px;
   }
 }
+
+.inputrow select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid #777;
+  border-radius: 8px;
+  background: white;
+  color: #181818;
+  padding: 14px;
+  font: inherit;
+}
+.inputrow select:focus-visible {
+  outline: 3px solid #144766;
+  outline-offset: 3px;
+}
+
+.twocol select {
+  width: 100%;
+  border: 1px solid #777;
+  border-radius: 8px;
+  padding: 14px;
+  background: white;
+  color: #181818;
+  font: inherit;
+}

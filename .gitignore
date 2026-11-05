@@ -16,3 +16,8 @@ dist/
 *-debug.log
 .firebase/
 functions/.runtime/
+
+.deploy/
+dist-cloud-test/
+.firebaserc
+operator-input*.json

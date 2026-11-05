@@ -1,4 +1,6 @@
 import { initializeApp } from 'firebase/app';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { clientConfiguration } from './release-config.mjs';
 import {
   initializeAuth,
   inMemoryPersistence,
@@ -19,28 +21,15 @@ import {
   connectFunctionsEmulator,
   httpsCallable,
 } from 'firebase/functions';
-const local = import.meta.env.VITE_PORTAL_MODE !== 'cloud';
-if (!local)
-  throw new Error(
-    'Cloud access is disabled pending security and deployment approval',
-  );
-const projectId = local
-  ? 'demo-mi-sin-portal'
-  : import.meta.env.VITE_FIREBASE_PROJECT_ID;
-if (!local && projectId !== 'gen-lang-client-0948635471')
-  throw new Error('Unexpected Firebase project');
+const config = clientConfiguration(import.meta.env);
+const local = config.mode === 'emulator';
 export const isLocal = local;
-const app = initializeApp(
-  {
-    projectId,
-    apiKey: local ? 'emulator-only' : import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain: local
-      ? 'demo-mi-sin-portal.firebaseapp.com'
-      : import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    appId: local ? 'emulator-only' : import.meta.env.VITE_FIREBASE_APP_ID,
-  },
-  'mi-sin-portal',
-);
+const app = initializeApp(config.firebase, 'mi-sin-portal');
+if (!local)
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(config.appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  });
 export const auth = initializeAuth(app, {
   persistence: inMemoryPersistence,
   popupRedirectResolver: browserPopupRedirectResolver,
@@ -99,10 +88,17 @@ export async function api<T = any>(
   data: Record<string, unknown> = {},
 ): Promise<T> {
   if (!auth.currentUser) throw { code: 'functions/unauthenticated' };
-  const response = await httpsCallable(
-    functions,
-    name,
-  )({ ...data, ...(microsoftIdToken ? { microsoftIdToken } : {}) });
+  const input = { ...data, ...(microsoftIdToken ? { microsoftIdToken } : {}) };
+  const response = local
+    ? await httpsCallable(functions, name)(input)
+    : await httpsCallable(
+        functions,
+        'miSinSynthetic',
+      )({
+        operation: name,
+        payload: data,
+        ...(microsoftIdToken ? { microsoftIdToken } : {}),
+      });
   return response.data as T;
 }
 export function safeError(error: unknown) {

@@ -87,6 +87,7 @@ function App() {
   }, [error]);
   useEffect(() => {
     if (
+      !isLocal ||
       !portal ||
       portal.kind !== 'contractor' ||
       portal.needsVerification ||
@@ -106,7 +107,7 @@ function App() {
     );
   }, [portal?.kind, portal?.needsVerification, portal?.revision]);
   useEffect(() => {
-    if (portal?.kind !== 'admin' || !auth.currentUser) return;
+    if (!isLocal || portal?.kind !== 'admin' || !auth.currentUser) return;
     return onSnapshot(
       doc(db, 'roles', auth.currentUser.uid),
       (snapshot) => {
@@ -153,6 +154,19 @@ function App() {
         window.removeEventListener(event, activity);
     };
   }, []);
+  useEffect(() => {
+    if (isLocal || !portal) return;
+    const timer = setInterval(() => {
+      void api<Context>('portalContext')
+        .then((c) => setPortal(c))
+        .catch(() => {
+          reset();
+          void logout();
+          setError('Your cloud-test access changed or expired.');
+        });
+    }, 60000);
+    return () => clearInterval(timer);
+  }, [portal?.kind]);
   async function run(action: () => Promise<void>) {
     setBusy(true);
     setError('');
@@ -219,14 +233,28 @@ function App() {
     await run(async () => {
       if (!portal || !confirmed) return;
       const syntheticValue = normalizeAndValidate(sin);
-      const ciphertext = await encryptSin(syntheticValue, portal);
-      await api('portalSubmit', {
-        invitationId: portal.invitationId,
-        revision: portal.revision,
-        keyId: portal.keyId,
-        ciphertext,
-        syntheticValue,
-      });
+      const ciphertext = isLocal
+        ? await encryptSin(syntheticValue, portal)
+        : undefined;
+      await api(
+        'portalSubmit',
+        isLocal
+          ? {
+              invitationId: portal.invitationId,
+              revision: portal.revision,
+              keyId: portal.keyId,
+              ciphertext,
+              syntheticValue,
+            }
+          : {
+              invitationId: portal.invitationId,
+              revision: portal.revision,
+              fixtureId:
+                syntheticValue === syntheticValues[0]
+                  ? 'fixture-a'
+                  : 'fixture-b',
+            },
+      );
       setSin('');
       setReview(false);
       setConfirmed(false);
@@ -265,8 +293,11 @@ function App() {
         Skip to content
       </a>
       <div className="review">
-        <strong>Local Phase 2 MVP.</strong> Synthetic identities and fixtures
-        only. Cloud collection and sensitive retrieval are disabled.
+        <strong>
+          {isLocal ? 'Local Phase 2 MVP.' : 'Synthetic cloud test only.'}
+        </strong>{' '}
+        Synthetic identities and fixtures only. Real collection, sensitive
+        retrieval and disposal are disabled.
       </div>
       <header className="header">
         <div>
@@ -343,7 +374,7 @@ function App() {
             <div className="pagehead">
               <div>
                 <div className="eyebrow">
-                  Administration · synthetic environment
+                  Administration · synthetic testing
                 </div>
                 <h1>Collection overview</h1>
                 <p>
@@ -503,12 +534,29 @@ function App() {
                             <label className="field" htmlFor="name">
                               Name (optional)
                             </label>
-                            <input
-                              id="name"
-                              maxLength={100}
-                              value={name}
-                              onChange={(e) => setName(e.target.value)}
-                            />
+                            {!isLocal ? (
+                              <select
+                                id="name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                              >
+                                <option value="">No name</option>
+                                {[
+                                  'Test account',
+                                  'Test Microsoft',
+                                  'Test Google',
+                                ].map((label) => (
+                                  <option key={label}>{label}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                id="name"
+                                maxLength={100}
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                              />
+                            )}
                           </div>
                           <div>
                             <label className="field" htmlFor="email">
@@ -684,38 +732,59 @@ function App() {
                     Social Insurance Number · synthetic fixture
                   </label>
                   <div className="inputrow">
-                    <input
-                      id="sin"
-                      type={show ? 'text' : 'password'}
-                      inputMode="numeric"
-                      autoComplete="off"
-                      spellCheck={false}
-                      maxLength={24}
-                      value={sin}
-                      readOnly={review}
-                      onChange={(e) => setSin(e.target.value)}
-                      aria-describedby="sinhelp"
-                    />
-                    <button
-                      className="secondary"
-                      type="button"
-                      aria-pressed={show}
-                      onClick={() => setShow(!show)}
-                    >
-                      {show ? 'Hide' : 'Show'}
-                    </button>
+                    {!isLocal ? (
+                      <select
+                        id="sin"
+                        aria-describedby="sinhelp"
+                        value={sin}
+                        disabled={review}
+                        onChange={(e) => setSin(e.target.value)}
+                      >
+                        <option value="">Choose a synthetic fixture</option>
+                        {syntheticValues.map((v) => (
+                          <option key={v} value={v}>
+                            {v}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        id="sin"
+                        type={show ? 'text' : 'password'}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        spellCheck={false}
+                        maxLength={24}
+                        value={sin}
+                        readOnly={review}
+                        onChange={(e) => setSin(e.target.value)}
+                        aria-describedby="sinhelp"
+                      />
+                    )}
+
+                    {isLocal && (
+                      <button
+                        className="secondary"
+                        type="button"
+                        aria-pressed={show}
+                        onClick={() => setShow(!show)}
+                      >
+                        {show ? 'Hide' : 'Show'}
+                      </button>
+                    )}
                   </div>
                   <p id="sinhelp" className="hint">
                     Nine digits. Spaces and hyphens accepted. No value is saved
-                    in browser storage.
+                    in browser storage. Cloud testing accepts fixture choices
+                    only.
                   </p>
                   <div className="notice">
                     <strong>Privacy and purpose</strong>
                     <p>
                       Real collection requires an approved tax-reporting
                       purpose, privacy contact, retention policy and secure
-                      official destination. This local MVP encrypts fixtures
-                      before Firestore storage.
+                      official destination. Only the documented synthetic
+                      fixtures may be stored during this test.
                     </p>
                   </div>
                   {review ? (
@@ -782,7 +851,8 @@ function App() {
           </div>
         )}
         <footer>
-          Morris Interactive · Local development · Cloud collection not approved
+          Morris Interactive · Synthetic testing only · Real collection not
+          approved
         </footer>
       </main>
     </>

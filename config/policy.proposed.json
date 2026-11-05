@@ -49,5 +49,15 @@
     "google.com"
   ],
   "functionsImplementedForEmulatorOnly": true,
-  "cloudMvpEnabled": false
+  "cloudMvpEnabled": false,
+  "phase25OwnerConfirmedResources": {
+    "databaseId": "mi-sin-portal",
+    "hostingSite": "mi-sin-portal",
+    "appId": "1:1025148630135:web:75e07aa9dd751cc25e0272",
+    "microsoftProviderConfigured": true,
+    "googleProviderEnabled": true,
+    "independentlyInspected": false
+  },
+  "syntheticCloudPackagePrepared": true,
+  "syntheticCloudActivationApproved": false
 }

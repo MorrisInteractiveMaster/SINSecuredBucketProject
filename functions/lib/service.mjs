@@ -18,6 +18,7 @@ export function createService({
   pepper,
   sendCode,
   tenantId,
+  policyMode = 'synthetic-emulator-only',
 }) {
   const ref = (c, id) => db.collection(c).doc(id);
   const audit = (tx, who, event, invitationId = null) =>
@@ -119,7 +120,7 @@ export function createService({
           ).data(),
           session = (await tx.get(ref('portalSessions', who.uid))).data(),
           policy = (await tx.get(ref('policy', 'mvp'))).data();
-        if (!policy?.publicKey || policy.mode !== 'synthetic-emulator-only')
+        if (!policy?.publicKey || policy.mode !== policyMode)
           deny('failed-precondition', 'Local setup is incomplete.');
         const proof =
           who.emailTrusted === true ||

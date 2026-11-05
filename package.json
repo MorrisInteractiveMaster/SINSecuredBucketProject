@@ -14,7 +14,13 @@
     "test:mvp": "node --test --test-concurrency=1 tests/mvp*.test.mjs",
     "test:mvp:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore,functions 'MVP_HTTP_URL=http://127.0.0.1:5001 npm run test:mvp'",
     "test:mvp:local-http": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore 'node scripts/test-local-http.mjs'",
-    "dev:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore 'node scripts/dev-local-mvp.mjs'"
+    "dev:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore 'node scripts/dev-local-mvp.mjs'",
+    "build:cloud-test": "tsc --noEmit && node scripts/build-cloud-test.mjs",
+    "prepare:cloud": "node scripts/prepare-cloud.mjs",
+    "check:cloud": "node scripts/check-cloud-release.mjs",
+    "test:release": "node --test tests/cloud-release.test.mjs",
+    "test:cloud:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.cloud-test.emulator.json --only auth,firestore 'node --test --test-concurrency=1 tests/cloud.integration.test.mjs'",
+    "test:all": "npm test && npm run test:release && npm run test:emulators && npm run test:emulators:closed && npm run test:mvp:local-http && npm run test:cloud:emulators"
   },
   "dependencies": {
     "firebase": "13.2.0",

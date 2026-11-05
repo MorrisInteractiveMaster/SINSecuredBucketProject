@@ -1,5 +1,7 @@
 # Phase 2 authentication and allowlist MVP
 
+**Historical local MVP record.** Phase 2.5 adds a separate synthetic cloud package without opening the old local runtime: see [cloud launch](cloud-test-launch.md).
+
 Implemented on the existing draft PR branch. This is a **local, synthetic-only functional MVP**, not a production collector. The 14 original concepts and design assets remain in `design/index.html`; the new React interface reuses their Morris Interactive palette, spacing and charcoal shell. No licensed logo or Visby asset was supplied in this checkout; the existing organization label and sans-serif fallback remain rather than an invented logo.
 
 ## Run locally
