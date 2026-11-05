@@ -21,7 +21,7 @@
   "securityReviewApproved": false,
   "privacyReviewApproved": false,
   "developmentProjectId": "demo-mi-sin-portal",
-  "authMethod": "verified-email-password",
+  "authMethod": "microsoft-or-google-plus-trusted-email-ownership-or-portal-code",
   "authPersistence": "memory-only",
   "firestoreCache": "memory-only",
   "functionsSelected": false,
@@ -43,5 +43,11 @@
   "purposeCode": null,
   "approvedDestinationCode": null,
   "privacyContact": null,
-  "privacyNoticeVersion": null
+  "privacyNoticeVersion": null,
+  "allowedSignInProviders": [
+    "microsoft.com",
+    "google.com"
+  ],
+  "functionsImplementedForEmulatorOnly": true,
+  "cloudMvpEnabled": false
 }

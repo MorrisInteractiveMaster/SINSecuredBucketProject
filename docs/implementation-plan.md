@@ -1,5 +1,7 @@
 # Named-database implementation and acceptance plan
 
+**Phase 2 update:** The local Microsoft/Google, backend authorization, CSV and encrypted synthetic submission MVP is implemented; see [current implementation and validation](phase-2-mvp.md). The Phase 1 plan below is retained as review history. Its password baseline is superseded by OAuth plus trusted email ownership or supplementary portal verification. Cloud resources, real provider configuration, sensitive retrieval and disposal remain blocked.
+
 November 5, 2026. Existing project `gen-lang-client-0948635471`, Blaze confirmed by owner. Proposed Standard/Native DB `mi-sin-portal`, Montréal subject to privacy/availability. No new project, billing change, merge, deployment or creation now. Additional actual spending target CAD $0; do not guarantee it for billed usage.
 
 ## Phase 1 review package

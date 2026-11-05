@@ -1,6 +1,8 @@
 # Morris Interactive | Secure SIN Collection Portal
 
-**Phase 1 review · existing owner-confirmed Blaze project · dedicated proposed database `mi-sin-portal`.**
+**Phase 2 local functional MVP · Microsoft/Google sign-in · approved-email allowlist · synthetic data only.**
+
+Implemented React/Vite screens, trusted callable authorization, CSV import/revocation, tenant-bound MI role checks, supplementary email proof and atomic encrypted submission. Start with [Phase 2 run instructions and limits](docs/phase-2-mvp.md) and [owner OAuth setup](docs/oauth-owner-setup.md). Production client access and callable operations are hard-disabled. No cloud Auth settings, resources, IAM or billing were changed; no merge or deployment was performed.
 
 Project `gen-lang-client-0948635471` already supports another application. Do not downgrade billing, create another project, alter existing app resources, merge or deploy. Named database/site/app creations and financial/security/privacy decisions remain unapproved. Cloud SIN collection stays disabled.
 
@@ -19,7 +21,7 @@ Project `gen-lang-client-0948635471` already supports another application. Do no
 - [14 screen layouts](docs/screen-layouts.md) and [non-collecting prototype](design/index.html)
 - [Unapproved policy](config/policy.proposed.json) and [validation record](docs/phase-1-validation.md)
 
-Proposed stack remains React/Vite/TypeScript/Tailwind, shared Firebase Auth, dedicated Standard/Native Firestore database/Rules/indexes, static Hosting and browser Web Crypto with offline private keys. Optional Functions are evaluated, not selected/deployed. Named DB usage is billable and cannot be guaranteed CAD $0; there is no second free allowance. No private key is stored in Firebase/GitHub or imported into the hosted app.
+Proposed stack remains React/Vite/TypeScript/Tailwind, shared Firebase Auth, dedicated Standard/Native Firestore database/Rules/indexes, static Hosting and browser Web Crypto with offline private keys. Functions are now implemented for local MVP authorization only; cloud selection/deployment remains unapproved. Named DB usage is billable and cannot be guaranteed CAD $0; there is no second free allowance. No private key is stored in Firebase/GitHub or imported into the hosted app.
 
 Live inspection failed due to missing authenticated Firebase CLI session; actual existing database IDs, regions, Rules, app associations, Auth/IAM settings and billing usage remain unverified. Do not assume the existing DB is `(default)` or claim the local sentinel tests prove actual existing-app isolation.
 
@@ -34,4 +36,4 @@ Install locked dependencies with `npm ci --ignore-scripts` (Node 22+, Java 21 fo
 
 The SDK helper is emulator-only; cloud initialization is rejected. `firebase.mi-sin-portal.proposed.json` references the dedicated deny-all Rules/indexes and an unbound Hosting target; not a deployment authorization. Never deploy `firebase.emulator*.json` or the functional model fixture. No live workflow, credentials, database or site was created.
 
-This is not a finished collector or production-readiness claim. Preserve genuine logo/Visby licensing constraints. Never commit real SINs, personal records, credentials, private keys or sensitive operational findings.
+This is not an approved production collector or production-readiness claim. Preserve genuine logo/Visby licensing constraints. Never commit real SINs, personal records, credentials, private keys or sensitive operational findings.
