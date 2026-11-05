@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+node_modules/
+.next/
+coverage/
+*.pem
+*.key
+*.pfx
+*.p12
+*.dump
+*.sql.gz
+__pycache__/
+.openai/
