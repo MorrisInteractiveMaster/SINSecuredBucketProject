@@ -69,3 +69,36 @@ test('failed unwrap consumes the retrieval attempt', async () => {
   assert.equal(record().state, 'retrieval-consumed');
   await assert.rejects(workflow.retrieve({}, id));
 });
+
+test('invalid and unauthorized submissions never call the wrapping service', async () => {
+  let wraps = 0;
+  const { workflow } = fixture({
+    authenticate: async () => ({ uid: 'wrong-binding', permissions: ['submit'] }),
+    keyCustody: { wrap: async () => { wraps++; } },
+  });
+  await assert.rejects(workflow.submit({}, id, '000000010'));
+  await assert.rejects(workflow.submit({}, id, '000000018'));
+  assert.equal(wraps, 0);
+});
+
+test('permission lost during unwrap suppresses disclosure and leaves retrieval consumed', async () => {
+  let allowed = true;
+  const { workflow, record } = fixture({
+    authenticate: async () => ({
+      uid: 'tester', mfaAt: now,
+      permissions: allowed ? ['submit', 'retrieve'] : [],
+    }),
+    keyCustody: {
+      wrap: async (key) => Buffer.from(key),
+      unwrap: async (key) => {
+        allowed = false;
+        return Buffer.from(key);
+      },
+    },
+  });
+  await workflow.submit({}, id, '000000018');
+  await assert.rejects(workflow.retrieve({}, id));
+  assert.equal(record().state, 'retrieval-consumed');
+  allowed = true;
+  await assert.rejects(workflow.retrieve({}, id));
+});

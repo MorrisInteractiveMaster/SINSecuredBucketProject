@@ -76,3 +76,18 @@ The isolated review code adds real Cloud KMS REST and named Firestore transactio
 The workflow consumes the invitation in the same transaction that creates the encrypted record. It consumes retrieval authorization before attempting unwrap. An unwrap failure or lost response cannot reset that state. Transfer requires an independently verified business-record receipt. Disposal requires independently verified retention authority and a confirmed transfer. The transaction projects status and events to metadata only. There is no bulk plaintext or export path for SIN payloads.
 
 Before any production release, independently review and implement the live identities and IAM, verified contractor invitation bindings and notice acceptance, allowed MFA enrollment and step-up, actual business-record receipt and retention verifiers, legal holds, backup/PITR and failed-retrieval procedures, approved collection purpose and notices, and Canadian processing and residency across all participating services. Active-record disposal does not erase backups. Verify logs and exports with fictional inputs. There is no approved production deployment procedure yet. These adapters remain excluded from all current release artifacts.
+
+## Record invitation metadata approval
+
+The invitation policy is separate from authorization to collect SINs. The owner records the actual privacy decision in the organization's change record and supplies its existing UUID as `privacyApprovalReference` in the private operator input. A generated UUID by itself is not a decision. Keep the contractor CSV and approval documents out of GitHub and deployment logs.
+
+Use an existing approved keyless operator credential with Firestore write access scoped to the named database. If your organization uses service account impersonation, use the approved operator identity and its established impersonation grant. Do not reuse the portal runtime identity as the operator or add a broad project-level role to work around permission errors.
+
+```sh
+node scripts/provision-staff-workspace.mjs operator-input.staff.json
+node scripts/provision-staff-workspace.mjs operator-input.staff.json --approve-invitations
+```
+
+The approval command checks the input before cloud authentication. It records the reference in the policy and audit event in one transaction. Repeating the same approval is safe. A conflicting approval reference requires review. The command reports missing approval, token acquisition, named-database IAM denial, and unavailable service as separate error categories.
+
+After a scoped release, use the staff dashboard to add an approved identity or preview and confirm the private CSV. Imports reject existing invitations atomically. Use the contractor details to update the name or revoke the invitation while retaining its existing ID and submission slot. Creating a metadata record does not send an invitation email. Confirm delivery through an approved organizational channel. The SIN workflow remains separate.

@@ -103,7 +103,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
         const slot = (await tx.get(slotRef(role.emailKey))).data();
         if (!matchesSlot(slot, who, role.emailKey, who.organization)) deny();
       }
-      if (permission === 'invitationManagement' && policy.invitationImportApproved !== true)
+      if (permission === 'invitationManagement' && (policy.invitationImportApproved !== true || !staffGuid.test(policy.privacyApprovalReference || '')))
         deny('failed-precondition', 'Contractor invitation changes are pending privacy approval.');
       return { role, policy };
     };
@@ -120,7 +120,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
         kind: 'admin', workspace: 'staff', uid: who.uid, displayLabel: role.displayLabel,
         permissions: {
           ...Object.fromEntries(staffPermissions.map((permission) => [permission,
-            role[permission] === true && (permission !== 'invitationManagement' || policy.invitationImportApproved === true),
+            role[permission] === true && (permission !== 'invitationManagement' || (policy.invitationImportApproved === true && staffGuid.test(policy.privacyApprovalReference || ''))),
           ])),
           administratorManagement: role.emailKey === initialOwnerKey,
         },
@@ -180,11 +180,15 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
       });
     }
     if (op === 'portalImportAllowlist') {
-      exactKeys(data, ['csv']);
+      exactKeys(data, ['csv', 'mode']);
+      if (data.mode !== undefined && !['create', 'rename'].includes(data.mode))
+        deny('invalid-argument', 'Unknown contractor list action.');
       const importer = createService({ db: scoped, tenantId: who.organization.tenantId, clock,
         invitationWriteGuard: (tx, actor) => authorizeTx(tx, actor, 'invitationManagement'),
       });
-      return importer.importCsv(who, data.csv);
+      return importer.importCsv(who, data.csv, {
+        createOnly: data.mode !== 'rename', renameOnly: data.mode === 'rename',
+      });
     }
     const handler = {
       portalOverview: 'overview', portalActivity: 'activity', portalBulkAction: 'bulk',

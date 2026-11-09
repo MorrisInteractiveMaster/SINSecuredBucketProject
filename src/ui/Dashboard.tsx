@@ -357,11 +357,11 @@ export default function Dashboard({
   useEffect(() => {
     if (!dialog) setDedicatedTesters(false);
   }, [dialog]);
-  async function importList(text: string) {
+  async function importList(text: string, mode: 'create' | 'rename' = 'create') {
     if (context.workspace !== 'staff' && dedicatedTesters && permissions.administratorManagement) {
       await api('portalImportDedicatedTesters', { csv: text, confirmed: true });
     } else {
-      await api('portalImportAllowlist', { csv: text });
+      await api('portalImportAllowlist', { csv: text, ...(mode === 'rename' ? { mode } : {}) });
     }
     setDedicatedTesters(false);
     setCsv('');
@@ -379,16 +379,13 @@ export default function Dashboard({
       return;
     }
     try {
-      const text = await file.text(),
-        rows = parseAllowlistCsv(text);
+      const text = await file.text().catch(() => { throw new Error('The CSV file could not be read.'); });
+      const rows = parseAllowlistCsv(text);
       setCsv(text);
       setCsvPreview(rows);
       setDialog({ kind: 'import' });
-    } catch {
-      notify(
-        'Check CSV columns name,email,status, duplicate emails and the 100-row limit.',
-        true,
-      );
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'The CSV file could not be read.', true);
     }
   }
   const countForExport =
@@ -607,7 +604,11 @@ export default function Dashboard({
                     : 'Invitation management permission is not assigned'
                 }
                 disabled={!permissions.invitationManagement || busy}
-                onClick={() => setDialog({ kind: 'add' })}
+                onClick={() => {
+                  setAddName(context.workspace === 'staff' ? '' : 'Test account');
+                  setAddEmail('');
+                  setDialog({ kind: 'add' });
+                }}
               >
                 Add contractor
               </Button>
@@ -1469,6 +1470,16 @@ export default function Dashboard({
               >
                 Request correction
               </Button>
+              {context.workspace === 'staff' && <Button
+                disabled={!permissions.invitationManagement || busy}
+                onClick={() => {
+                  setAddName(drawer.name);
+                  setAddEmail(drawer.email);
+                  setDialog({ kind: 'add', row: drawer });
+                }}
+              >
+                Edit contractor name
+              </Button>}
               <Button
                 title="Revoke this invitation; preserve the existing record"
                 disabled={
@@ -1649,21 +1660,29 @@ export default function Dashboard({
             <>
               <p>
                 {context.workspace === 'staff'
-                  ? 'Import an approved private contractor list after privacy approval. SIN collection remains closed.'
+                  ? 'Manage approved contractor metadata. SIN collection remains closed.'
                   : 'Cloud testing accepts only independently verified dedicated test accounts.'}
               </p>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   void action(async () => {
+                    const quote = (value: string) => '"' + value.replaceAll('"', '""') + '"';
                     await importList(
-                      `name,email,status\n${JSON.stringify(addName)},${JSON.stringify(addEmail)},active`,
+                      `name,email,status\n${quote(addName)},${quote(addEmail)},active`,
+                      dialog.row ? 'rename' : 'create',
                     );
                     setAddEmail('');
                   });
                 }}
               >
-                <label className="field-label">
+                {context.workspace === 'staff' ? (
+                  <label className="field-label">
+                    Contractor name
+                    <input required maxLength={100} value={addName}
+                      onChange={(event) => setAddName(event.target.value)} />
+                  </label>
+                ) : <label className="field-label">
                   Test label
                   <select
                     value={addName}
@@ -1675,7 +1694,7 @@ export default function Dashboard({
                       ),
                     )}
                   </select>
-                </label>
+                </label>}
                 <label className="field-label">
                   Approved email
                   <input
@@ -1683,6 +1702,7 @@ export default function Dashboard({
                     type="email"
                     maxLength={254}
                     value={addEmail}
+                    readOnly={Boolean(dialog.row)}
                     onChange={(e) => setAddEmail(e.target.value)}
                   />
                 </label>
@@ -1692,10 +1712,10 @@ export default function Dashboard({
                 I independently confirmed that these are dedicated Gmail test accounts.
               </label>}
                 <Button type="submit" kind="primary" busy={busy}>
-                  Add approved identity
+                  {dialog.row ? 'Save contractor name' : 'Add approved identity'}
                 </Button>
               </form>
-              <div className="divider-label">or import a CSV</div>
+              {!dialog.row && <><div className="divider-label">or import a CSV</div>
               <label className="upload-zone">
                 <Icon name="upload" />
                 <strong>Choose approved email CSV</strong>
@@ -1706,7 +1726,7 @@ export default function Dashboard({
                   aria-label="Import approved email CSV"
                   onChange={(e) => void readCsv(e.target.files?.[0])}
                 />
-              </label>
+              </label></>}
             </>
           ) : dialog.kind === 'import' ? (
             <>

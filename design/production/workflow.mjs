@@ -62,18 +62,23 @@ export function createProductionWorkflow({
          clock() - actor.mfaAt > 5 * minute)) throw failure();
     return actor;
   }
+  async function assertInvitation(tx, actor, id) {
+    const invitation = await tx.invitation(id);
+    if (invitation?.uid !== actor.uid || invitation.active !== true ||
+        !Number.isFinite(invitation.expiresAt) || invitation.expiresAt <= clock() ||
+        invitation.consumed || !(invitation.noticeAccepted === approval.noticeVersion && approval.noticeVersion)) throw failure();
+  }
   function event(tx, actor, id, action) {
     tx.audit({ actorUid: actor.uid, recordId: id, action, at: clock() });
   }
   return {
     async submit(request, id, number) {
       const actor = await access(request, 'submit', id);
-      const envelope = await encrypt(keyCustody, id, normalizeSin(number));
+      const normalized = normalizeSin(number);
+      await store.atomic((tx) => assertInvitation(tx, actor, id));
+      const envelope = await encrypt(keyCustody, id, normalized);
       await store.atomic(async (tx) => {
-        const invitation = await tx.invitation(id);
-        if (invitation?.uid !== actor.uid || invitation.active !== true ||
-            !Number.isFinite(invitation.expiresAt) || invitation.expiresAt <= clock() ||
-            invitation.consumed || !(invitation.noticeAccepted === approval.noticeVersion && approval.noticeVersion)) throw failure();
+        await assertInvitation(tx, actor, id);
         tx.consumeInvitation(id);
         tx.createRecord(id, { state: 'sealed', envelope, submittedAt: clock() });
         event(tx, actor, id, 'submitted');
@@ -91,6 +96,9 @@ export function createProductionWorkflow({
       });
       // A crash, lost response or unwrap failure does not restore retrieval.
       const value = await decrypt(keyCustody, id, envelope).catch(() => { throw failure(); });
+      // A permission or freshness change during KMS access must suppress disclosure.
+      const currentActor = await access(request, 'retrieve', id);
+      if (currentActor.uid !== actor.uid) throw failure();
       await store.atomic(async (tx) => {
         const record = await tx.record(id);
         if (record?.state !== 'retrieval-consumed' || record.retrievedBy !== actor.uid) throw failure();

@@ -66,18 +66,23 @@ export function parseAllowlistCsv(text) {
   if (rows.length < 2 || rows.length > 101)
     throw new Error('Import 1–100 rows');
   const seen = new Set();
-  return rows.slice(1).map((r) => {
-    if (r.length !== 3) throw new Error('Each row needs three columns');
-    const name = r[0].trim(),
-      email = normalizeEmail(r[1]),
-      status = r[2].trim().toLowerCase();
+  return rows.slice(1).map((r, index) => {
+    const rowNumber = index + 2;
+    if (r.length !== 3) throw new Error('Row ' + rowNumber + ' needs three columns');
+    const name = r[0].trim(), status = r[2].trim().toLowerCase();
+    let email;
+    try {
+      email = normalizeEmail(r[1]);
+    } catch {
+      throw new Error('Row ' + rowNumber + ' has an invalid email');
+    }
     if (
       name.length > 100 ||
       /[\x00-\x08\x0B-\x1F]/.test(name) ||
       !['active', 'revoked', 'removed'].includes(status)
     )
-      throw new Error('Invalid row');
-    if (seen.has(email)) throw new Error('Duplicate email');
+      throw new Error('Row ' + rowNumber + ' has an invalid name or status');
+    if (seen.has(email)) throw new Error('Duplicate email at row ' + rowNumber);
     seen.add(email);
     return { name, email, status };
   });
