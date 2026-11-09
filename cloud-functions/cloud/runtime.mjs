@@ -29,7 +29,7 @@ const OPERATIONS = [
   'portalContext',
   'portalImportAllowlist',
   'portalListContractors',
-  'portalSubmit', 'portalSubmitSin', 'portalRevealSin',
+  'portalSubmit', 'portalSubmitSin', 'portalBucketReveal', 'portalBucketSendCode', 'portalBucketVerifyCode', 'portalBucketConfigure',
   'portalRequestCorrection',
   'portalOverview',
   'portalActivity',
@@ -46,12 +46,15 @@ export function createCloudRuntime({
   activation,
   credential,
   custody,
+  kmsFetcher,
+  mailer,
+  verificationSecret,
   staffRoster,
   clock = Date.now,
   verifyMicrosoft = verifyOrganizationalAssertion,
 }) {
   const setup = createSetup({ db, clock, projectId, emulator, config: activation, verifyMicrosoft });
-  const sin = credential || custody ? createOneTimeSin({ db: staffScope(db), clock, credential, custody }) : undefined;
+  const sin = credential || custody ? createOneTimeSin({ db: staffScope(db), clock, credential, custody, kmsFetcher, mailer, verificationSecret }) : undefined;
   const staff = createStaffWorkspace({ db, clock, verifyMicrosoft, sin, roster: staffRoster });
   return async function dispatch(request) {
     exactKeys(request.data, ['operation', 'payload', 'microsoftIdToken']);
@@ -100,13 +103,15 @@ export function createCloudRuntime({
     const staffActor = await staff.resolve(who, request.data.microsoftIdToken, op,
       () => enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock));
     if (staffActor) return staff.dispatch(staffActor, op, data);
-    if (op === 'portalRevealSin') deny();
-    if (sin && (op === 'portalSubmitSin' || (op === 'portalContext' && await sin.enabled()))) {
+    if (op === 'portalBucketReveal' || op === 'portalBucketConfigure') deny();
+    const bucketOps = {
+      portalSubmitSin: 'submit', portalBucketSendCode: 'issueCode', portalBucketVerifyCode: 'verifyCode',
+    };
+    if (sin && (Object.hasOwn(bucketOps, op) || (op === 'portalContext' && await sin.enabled()))) {
       await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
-      return op === 'portalSubmitSin' ? sin.submit(who, data) : sin.context(who);
+      return sin[bucketOps[op] ?? 'context'](who, data);
     }
-    if (op === 'portalSubmitSin') deny('failed-precondition');
-
+    if (Object.hasOwn(bucketOps, op)) deny('failed-precondition');
     let policy;
     if (!['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op)) {
       policy = assertRelease((await db.doc('policy/cloud-test').get()).data(), projectId, clock(), emulator);

@@ -92,12 +92,19 @@ The approval command checks the input before cloud authentication. It records th
 
 After a scoped release, use the staff dashboard to add an approved identity or preview and confirm the private CSV. Imports reject existing invitations atomically. Use the contractor details to update the name or revoke the invitation while retaining its existing ID and submission slot. Creating a metadata record does not send an invitation email. Confirm delivery through an approved organizational channel. The SIN workflow remains separate.
 
-## One-time SIN release
+## Secure bucket deployment and activation
 
-The scoped callable and frontend include the submit and Reveal & Copy operations. The existing deployment command names are retained. Deployment leaves live collection closed until the separate `policy/sin-release` gate is authorized. The operator must verify scoped IAM, runtime request-body log exclusions, backup/PITR settings and the approved release before opening that gate. The portal requires a recently authenticated, active, Microsoft-bound staff role to reveal. The contractor sign-in path currently accepts verified Gmail through Google and Outlook or Hotmail through Microsoft. Firebase does not treat a Google or Microsoft email on an unrelated domain as authoritative based solely on provider sign-in.
+The existing Montreal callable and named Firestore database serve the bucket. Keep the existing Microsoft administrator bindings, App Check, Hosting target, and deny-all client rules. Use only the scoped commands below. A deployment leaves live collection closed until the operator records the release decision. Contractors use their existing approved address. Where provider sign-in alone is insufficient, the portal sends a verification code only after the contractor requests one. Staff share the portal link manually.
 
-1. Identify the approved symmetric Cloud KMS key in a Canadian location. In **Google Cloud Console → Security → Key Management → key ring → key → Permissions**, grant **Cloud KMS CryptoKey Encrypter/Decrypter** on this key only to `mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com`. The one scoped callable uses this runtime identity for both operations. Verify that the runtime can encrypt and decrypt with that key and that key rotation preserves versions needed by sealed records.
-2. From the reviewed revision and the existing approved Cloud Shell session, use the existing portal configuration and deploy only the dedicated Function and Hosting target. The reviewed configuration must retain deny-all client Firestore rules for the named database.
+1. In Cloud KMS, grant **Cloud KMS CryptoKey Encrypter/Decrypter** on the approved Canadian symmetric key only to `mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com`. Record its full resource name. Verify a wrap and unwrap of 32 random test bytes under that runtime identity, using an already approved impersonation session or an authorized cloud smoke test. Verify that request bodies are excluded from logs and review backup/PITR retention. Keep older key versions available while their sealed records remain.
+2. In Resend, verify the approved sender domain and create a sending-only API key scoped to that domain. In the approved Cloud Shell session, set the following Firebase secret. Generate the HMAC key with `openssl rand -hex 32`. Enter the JSON at the CLI prompt using the actual verified sender and API key, without putting the values in shell history or Git. Grant the same runtime service account Secret Manager Secret Accessor on this secret only if the scoped Firebase deploy has not already granted it.
+
+   ```sh
+   npx --yes firebase-tools@15.35.0 functions:secrets:set MI_BUCKET_VERIFICATION_MAIL --project gen-lang-client-0948635471
+   ```
+
+   The secret has three properties, `apiKey`, `from` (a single sender address), and `hmacKey` (64 hex characters). Resend receives the recipient address and verification code. It receives no submitted bucket values. The deployment operator must approve this sender/provider and validate delivery to an approved test mailbox.
+3. Deploy from the reviewed commit using the existing Firebase web application and App Check configuration. Use the existing public configuration values when prompted. This updates only the dedicated callable codebase and portal Hosting target.
 
    ```sh
    npm ci --ignore-scripts
@@ -108,12 +115,14 @@ The scoped callable and frontend include the submit and Reveal & Copy operations
    node scripts/launch-cloud-test.mjs live --execute
    ```
 
-3. After verification and the recorded release decision, set `sinReleaseApprovalReference` to that decision's existing UUID and `sinKmsKey` to the full approved KMS key resource in the private `operator-input.staff.json`. The same file uses the existing tenant, client and recorded metadata-approval fields. If metadata approval is still closed, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --approve-invitations` with its actual approval reference first. Then use the approved keyless operator session.
+4. Confirm the staff dashboard works with the existing Microsoft organizational accounts. Set `privacyApprovalReference` in the private operator JSON to the actual recorded contractor-metadata approval UUID. If contractor metadata access is still closed, run the first command below. Add or import the approved addresses. In **Security & handling → Requested information**, set the label and input type. The change applies to future submissions. Previously sealed values remain retrievable and submission slots are preserved.
+5. After live readiness and the release decision have been verified, set `sinReleaseApprovalReference` to the recorded release decision's existing UUID and `sinKmsKey` to the approved Canadian key's full resource name in the same private `operator-input.staff.json`. Run the second command below under the approved keyless operator session. The command name and confirmation phrase are retained for compatibility.
 
    ```sh
+   node scripts/provision-staff-workspace.mjs operator-input.staff.json --approve-invitations
    node scripts/provision-staff-workspace.mjs operator-input.staff.json --enable-sin
    ```
 
-   Type `APPROVE LIVE SIN RELEASE` only after the authorization is recorded. Share the portal URL manually with approved contractors. The service sends no invitation emails.
+   Type `APPROVE LIVE SIN RELEASE` after authorization is recorded. Share the portal URL manually. For the first live check, use an approved test mailbox and a non-sensitive test value matching the configured field. Verify code delivery on a custom domain, submission, clipboard behavior, and rejection of a second reveal.
 
-To halt submission and reveal without touching other apps, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --pause-sin`. Each reveal deletes the active payload and wrapped key before returning the value. If the request is interrupted after that transaction, the value cannot be reopened. Clipboard and copies taken outside the portal are outside its control. Backup and point-in-time copies may retain encrypted material under their configured retention. Never restore old submission, entitlement or payload state over the live portal. An isolated restore for investigation must remain disconnected from the live callable.
+To halt submission and reveal, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --pause-sin`. The reveal transaction deletes the active ciphertext and wrapped key before returning the value. If delivery fails after that transaction, the value cannot be reopened. Clipboard copies are outside the portal's control. Backups and point-in-time copies may retain encrypted material for the configured retention period. Keep any restore isolated from the live callable.

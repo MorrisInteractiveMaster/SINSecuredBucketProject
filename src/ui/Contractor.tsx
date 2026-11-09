@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import type { Api, Context } from './types';
+import { defaultBucketField, bucketFieldTypes, validBucketValue } from '../../functions/lib/bucket-field.mjs';
+import { message } from '../app/client';
+import type { Api, Context, BucketField } from './types';
 import { Button, Icon, Help } from './components';
 import {
   syntheticValues,
@@ -10,38 +12,63 @@ export default function Contractor(props: Parameters<typeof FixtureContractor>[0
   return props.context.liveSin ? <LiveContractor {...props} /> : <FixtureContractor {...props} />;
 }
 
-function LiveContractor({ context, api, signOut }: Parameters<typeof FixtureContractor>[0]) {
+function LiveContractor({ context, api, signOut, onContext }: Parameters<typeof FixtureContractor>[0]) {
+  const field = context.bucketField ?? (defaultBucketField as BucketField);
+  const format = bucketFieldTypes[field.type];
   const [value, setValue] = useState('');
+  const [code, setCode] = useState('');
+  const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [complete, setComplete] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => { setValue(''); }, [field.revision]);
   useEffect(() => {
-    const clear = () => { if (document.hidden) setValue(''); };
+    const clear = () => {
+      if (document.hidden) {
+        setValue('');
+        setCode('');
+      }
+    };
     document.addEventListener('visibilitychange', clear);
     return () => document.removeEventListener('visibilitychange', clear);
   }, []);
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
+  async function run(action: () => Promise<void>) {
     if (busy) return;
     setError('');
-    let sin: string;
-    try {
-      sin = normalizeAndValidate(value);
-    } catch {
-      setError('Enter a valid nine-digit Canadian SIN.');
-      return;
-    }
     setBusy(true);
-    setValue('');
     try {
-      await api('portalSubmitSin', { sin });
-      setComplete(true);
+      await action();
     } catch (cause) {
-      if ((cause as { code?: string }).code === 'functions/already-exists') setComplete(true);
-      else setError('Submission could not be confirmed. Check your connection or sign in again to check the status.');
+      setError(message(cause));
     } finally {
       setBusy(false);
     }
+  }
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!validBucketValue(value, field.type)) {
+      setError(format.hint);
+      return;
+    }
+    let submitted = value;
+    if (field.type === 'sin') {
+      try {
+        submitted = normalizeAndValidate(value);
+      } catch {
+        setError(format.hint);
+        return;
+      }
+    }
+    await run(async () => {
+      setValue('');
+      try {
+        await api('portalSubmitSin', { value: submitted, revision: field.revision });
+        setComplete(true);
+      } catch (cause) {
+        if ((cause as { code?: string }).code === 'functions/already-exists') setComplete(true);
+        else throw cause;
+      }
+    });
   }
   return <div className="contractor-shell">
     <header className="public-header">
@@ -49,17 +76,43 @@ function LiveContractor({ context, api, signOut }: Parameters<typeof FixtureCont
       <Button icon="logout" onClick={signOut}>Sign out</Button>
     </header>
     <main className="contractor-main">
-      <h1>Secure SIN submission</h1>
-      {context.submitted || complete ? <p role="status">Your SIN has been submitted securely.</p> :
-        <form onSubmit={(event) => void submit(event)}>
-          <p>Morris Interactive will receive your SIN. An authorized administrator can retrieve it once.</p>
-          <label className="field-label">Social Insurance Number
-            <input type="password" inputMode="numeric" autoComplete="off" required maxLength={24}
-              value={value} disabled={busy} onChange={(event) => setValue(event.target.value)} />
+      <h1>{context.needsVerification ? 'Verify your email' : 'Secure submission'}</h1>
+      {context.needsVerification ? <>
+        <p>We’ll send a one-time code to your approved email address.</p>
+        <Button disabled={busy} onClick={() => void run(async () => {
+          await api('portalBucketSendCode');
+          setSent(true);
+        })}>{sent ? 'Send a new code' : 'Send verification code'}</Button>
+        {sent && <form onSubmit={(event) => {
+          event.preventDefault();
+          void run(async () => {
+            const verified = await api<Context>('portalBucketVerifyCode', { code });
+            setCode('');
+            onContext(verified);
+          });
+        }}>
+          <p role="status">Check your mailbox for the eight-digit code.</p>
+          <label className="field-label">Verification code
+            <input inputMode="numeric" autoComplete="one-time-code" required pattern="[0-9]{8}"
+              maxLength={8} value={code} disabled={busy} onChange={(event) => setCode(event.target.value)} />
           </label>
-          {error && <p role="alert">{error}</p>}
-          <Button type="submit" kind="primary" busy={busy} disabled={busy}>Submit SIN</Button>
+          <Button type="submit" kind="primary" disabled={busy}>Verify email</Button>
         </form>}
+      </> : context.submitted || complete ? <p role="status">Your information has been submitted securely.</p> :
+        <form onSubmit={(event) => void submit(event)}>
+          <p>Morris Interactive will receive this information. An authorized administrator can retrieve it once.</p>
+          <label className="field-label">{field.label}
+            {field.type === 'text' ?
+              <textarea autoComplete="off" required maxLength={format.max} value={value} disabled={busy}
+                onChange={(event) => setValue(event.target.value)} /> :
+              <input type="password" inputMode={field.type === 'sin' ? 'numeric' : 'text'} autoComplete="off"
+                required maxLength={format.max} value={value} disabled={busy}
+                onChange={(event) => setValue(event.target.value)} />}
+          </label>
+          <p>{format.hint}</p>
+          <Button type="submit" kind="primary" busy={busy} disabled={busy}>Submit</Button>
+        </form>}
+      {error && <p role="alert">{error}</p>}
     </main>
   </div>;
 }

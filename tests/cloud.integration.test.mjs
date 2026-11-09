@@ -473,7 +473,7 @@ test('multiple approved Microsoft UID bindings remain independent and role revoc
 test('live UI operations through callable transport and named Firestore consume and remove a SIN once', async () => {
   const admin = 'staff@example.org';
   const staffUid = request(adminToken).auth.uid;
-  const contractorEmail = 'one-time-fixture@gmail.com';
+  const contractorEmail = 'one-time-fixture@example.org';
   const contractor = await token('google.com', contractorEmail, 'one-time-fictional', true);
   const staffPolicy = db.doc('staffWorkspace/v1/policy/access');
   const release = db.doc('staffWorkspace/v1/policy/sin-release');
@@ -483,22 +483,29 @@ test('live UI operations through callable transport and named Firestore consume 
   const payload = db.doc('staffWorkspace/v1/sealedSin/' + id);
   const metadata = db.doc('staffWorkspace/v1/submissions/' + id);
   let unwrapFails = false;
+  let delivered;
   const wrappingMask = Buffer.alloc(32, 42);
   const transform = (key) => Buffer.from(key.map((byte, i) => byte ^ wrappingMask[i]));
   await Promise.all([
     staffPolicy.set({ ...policy, version: 1, invitationImportApproved: true, privacyApprovalReference: guid }),
-    role.set({ active: true, objectId: guid, tenantId: guid, emailKey: emailKey(admin), statusViewing: true }),
+    role.set({ active: true, objectId: guid, tenantId: guid, emailKey: emailKey(admin), statusViewing: true, invitationManagement: true }),
     entry.set({ invitationId: id, email: contractorEmail, status: 'active', expiresAt: Timestamp.fromMillis(Date.now() + 3600000) }),
   ]);
   const live = createCloudRuntime({
     db, auth, projectId: 'demo-mi-sin-portal', emulator: true,
     staffRoster: [{ key: emailKey(admin), label: 'Fictional staff' }],
     verifyMicrosoft: async () => ({ tenantId: guid, objectId: guid, member: true, accountEmail: admin }),
-    custody: (_, operation) => operation === 'encrypt' ? { wrap: async (key) => transform(key) } : {
-      unwrap: async (key) => {
-        if (unwrapFails) throw new Error('simulated KMS failure');
-        return transform(key);
-      },
+    verificationSecret: () => 'ab'.repeat(32),
+    mailer: async (email, code) => { delivered = { email, code }; },
+    credential: { getAccessToken: async () => ({ access_token: 'fixture-only' }) },
+    kmsFetcher: async (url, options) => {
+      assert.match(url, /^https:\/\/cloudkms\.googleapis\.com\/v1\/projects\/fictional-keys\/locations\/northamerica-northeast1\//);
+      const request = JSON.parse(options.body);
+      assert.ok(request.additionalAuthenticatedData);
+      const encrypt = url.endsWith(':encrypt');
+      if (!encrypt && unwrapFails) return { ok: false };
+      const key = transform(Buffer.from(request[encrypt ? 'plaintext' : 'ciphertext'], 'base64'));
+      return { ok: true, json: async () => ({ [encrypt ? 'ciphertext' : 'plaintext']: key.toString('base64') }) };
     },
   });
   const handler = createTransportHandler({
@@ -516,38 +523,71 @@ test('live UI operations through callable transport and named Firestore consume 
     }, response);
     return response;
   }
-  assert.notEqual((await call(contractor, 'portalSubmitSin', { sin: '000000018' })).code, 200);
+  assert.notEqual((await call(contractor, 'portalSubmitSin', { value: '000000018', revision: 'initial' })).code, 200);
   await release.set({ enabled: true, approvalReference: guid,
     kmsKey: 'projects/fictional-keys/locations/northamerica-northeast1/keyRings/fixture/cryptoKeys/fixture',
   });
-  assert.equal((await call(contractor, 'portalContext')).body.result.liveSin, true);
-  assert.equal((await call(contractor, 'portalSubmitSin', { sin: '000000019' })).code, 400);
-  assert.equal((await call(outsiderToken, 'portalSubmitSin', { sin: '000000018' })).code, 403);
-  const submit = () => call(contractor, 'portalSubmitSin', { sin: '000000018' });
+  assert.equal((await call(contractor, 'portalContext')).body.result.needsVerification, true);
+  assert.equal((await call(contractor, 'portalSubmitSin', { value: '000000018', revision: 'initial' })).code, 403);
+  assert.equal((await call(outsiderToken, 'portalBucketSendCode')).code, 403);
+  assert.equal((await call(contractor, 'portalBucketSendCode')).code, 200);
+  assert.equal(delivered.email, contractorEmail);
+  const wrong = delivered.code === '12345678' ? '87654321' : '12345678';
+  assert.equal((await call(contractor, 'portalBucketVerifyCode', { code: wrong })).code, 403);
+  assert.equal((await call(contractor, 'portalBucketSendCode')).code, 429);
+  assert.equal((await call(contractor, 'portalBucketVerifyCode', { code: delivered.code })).body.result.needsVerification, false);
+  assert.equal((await call(contractor, 'portalBucketVerifyCode', { code: delivered.code })).code, 403);
+  const proof = (await db.doc('staffWorkspace/v1/bucketMailboxProof/' + emailKey(contractorEmail)).get()).data();
+  assert.equal(proof.hash, null);
+  assert.equal(JSON.stringify(proof).includes(delivered.code), false);
+  assert.equal((await call(contractor, 'portalSubmitSin', { value: '000000019', revision: 'initial' })).code, 400);
+  assert.equal((await call(outsiderToken, 'portalSubmitSin', { value: '000000018', revision: 'initial' })).code, 403);
+  const submit = () => call(contractor, 'portalSubmitSin', { value: '000000018', revision: 'initial' });
   assert.deepEqual((await Promise.all([submit(), submit()])).map((r) => r.code).sort(), [200, 409]);
   const sealed = (await payload.get()).data();
   assert.equal(sealed.ciphertext.length, 9);
   assert.equal(JSON.stringify(sealed).includes('000000018'), false);
   assert.equal((await call(contractor, 'portalContext')).body.result.submitted, true);
-  assert.equal((await call(contractor, 'portalRevealSin', { invitationId: id })).code, 403);
-  const reveal = () => call(adminToken, 'portalRevealSin', { invitationId: id });
+  assert.equal((await call(contractor, 'portalBucketReveal', { invitationId: id })).code, 403);
+  assert.notEqual((await call(adminToken, 'portalRevealSin', { invitationId: id })).code, 200);
+  assert.equal((await payload.get()).exists, true);
+  const reveal = () => call(adminToken, 'portalBucketReveal', { invitationId: id });
   const results = await Promise.all([reveal(), reveal()]);
   assert.equal(results.filter((r) => r.code === 200).length, 1);
-  assert.equal(results.find((r) => r.code === 200).body.result.sin, '000000018');
+  assert.equal(results.find((r) => r.code === 200).body.result.value, '000000018');
   assert.notEqual((await reveal()).code, 200);
   assert.equal((await payload.get()).exists, false);
   assert.equal((await metadata.get()).data().retrievalStatus, 'retrieved');
   assert.equal((await metadata.get()).data().disposalStatus, 'disposed');
   assert.equal((await submit()).code, 409);
-  const second = randomUUID();
-  await entry.update({ invitationId: second });
-  assert.equal((await submit()).code, 200);
-  unwrapFails = true;
-  assert.notEqual((await call(adminToken, 'portalRevealSin', { invitationId: second })).code, 200);
-  assert.equal((await db.doc('staffWorkspace/v1/sealedSin/' + second).get()).exists, false);
-  unwrapFails = false;
-  assert.notEqual((await call(adminToken, 'portalRevealSin', { invitationId: second })).code, 200);
+  const trustedEmail = 'other-fixture@gmail.com';
+  const trusted = await token('google.com', trustedEmail, 'other-fixture', true);
+  const trustedEntry = db.doc('staffWorkspace/v1/allowlist/' + emailKey(trustedEmail));
+  for (const [type, sample, invalid] of [
+    ['account', '000-AC 123', 'abc!'],
+    ['code', 'XyZ-!42', 'two words'],
+    ['text', 'Confidential café 🗝️\nSecond line', ''],
+  ]) {
+    const nextId = randomUUID();
+    await trustedEntry.set({ invitationId: nextId, email: trustedEmail, status: 'active', expiresAt: Timestamp.fromMillis(Date.now() + 3600000) });
+    assert.equal((await call(trusted, 'portalBucketConfigure', { label: 'Forbidden', type })).code, 403);
+    const configured = await call(adminToken, 'portalBucketConfigure', { label: 'Requested value', type });
+    assert.equal(configured.code, 200);
+    const field = (await call(trusted, 'portalContext')).body.result.bucketField;
+    assert.equal(field.type, type);
+    assert.equal((await call(trusted, 'portalContext')).body.result.needsVerification, false);
+    assert.notEqual((await call(trusted, 'portalSubmitSin', { value: sample, revision: 'initial' })).code, 200);
+    assert.equal((await call(trusted, 'portalSubmitSin', { value: invalid, revision: field.revision })).code, 400);
+    assert.equal((await call(trusted, 'portalSubmitSin', { value: sample, revision: field.revision })).code, 200);
+    unwrapFails = type === 'code';
+    const received = await call(adminToken, 'portalBucketReveal', { invitationId: nextId });
+    if (unwrapFails) assert.equal(received.body.error.details.stage, 'sin-delivery');
+    else assert.equal(received.body.result.value, sample);
+    assert.equal((await db.doc('staffWorkspace/v1/sealedSin/' + nextId).get()).exists, false);
+    unwrapFails = false;
+    assert.notEqual((await call(adminToken, 'portalBucketReveal', { invitationId: nextId })).code, 200);
+  }
   const audit = await db.collection('staffWorkspace/v1/auditEvents').get();
-  assert.equal(audit.docs.filter((doc) => doc.data().event === 'sin_reveal_consumed').length, 2);
+  assert.equal(audit.docs.filter((doc) => doc.data().event === 'sin_reveal_consumed').length, 4);
   assert.equal(JSON.stringify(audit.docs.map((doc) => doc.data())).includes('000000018'), false);
 });

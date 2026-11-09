@@ -7,7 +7,8 @@ import {
 } from '../../functions/lib/metadata.mjs';
 import { parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import { message } from '../app/client';
-import type { Api, Context, Overview, Row, Event } from './types';
+import { bucketFieldTypes } from '../../functions/lib/bucket-field.mjs';
+import type { Api, Context, Overview, Row, Event, BucketField } from './types';
 import {
   Badge,
   Button,
@@ -106,6 +107,8 @@ export default function Dashboard({
     [addName, setAddName] = useState('Test account'),
     [addEmail, setAddEmail] = useState('');
   const permissions = context.permissions || {};
+  const [bucketField, setBucketField] = useState(context.bucketField);
+  const [fieldSaving, setFieldSaving] = useState(false);
   const [revealed, setRevealed] = useState('');
   const [revealError, setRevealError] = useState('');
   const revealActive = useRef(false);
@@ -134,19 +137,19 @@ export default function Dashboard({
     setBusy(true);
     setRevealError('');
     try {
-      const { sin } = await api<{ sin: string }>('portalRevealSin', { invitationId: id });
+      const { value } = await api<{ value: string }>('portalBucketReveal', { invitationId: id });
       if (!revealActive.current || document.hidden) {
         setRevealError('The one-time reveal was consumed while this page was hidden.');
         return;
       }
       try {
-        await navigator.clipboard.writeText(sin);
-        notify('SIN copied. It cannot be revealed again.');
+        await navigator.clipboard.writeText(value);
+        notify('Value copied. It cannot be revealed again.');
         setDialog(null);
       } catch {
         if (revealActive.current && !document.hidden) {
           setRevealError('The one-time reveal has been consumed.');
-          setRevealed(sin);
+          setRevealed(value);
         }
       }
     } catch (error) {
@@ -688,7 +691,7 @@ export default function Dashboard({
                     <div className="status-strip">
                       <span>
                         <i />
-                        {context.liveSin ? 'Connected to secure SIN collection' : context.workspace === 'staff' ? 'Connected to staff invitation metadata' : 'Connected to the synthetic collection workflow'}
+                        {context.liveSin ? 'Connected to secure information collection' : context.workspace === 'staff' ? 'Connected to staff invitation metadata' : 'Connected to the synthetic collection workflow'}
                       </span>
                       <span>
                         Updated {time(data.generatedAt)}{' '}
@@ -1374,6 +1377,30 @@ export default function Dashboard({
                 )}
                 {tab === 'security' && (
                   <div className="security-grid">
+                    {bucketField && permissions.invitationManagement && <section className="data-panel security-card">
+                      <h2>Requested information</h2>
+                      <form onSubmit={(event) => {
+                        event.preventDefault();
+                        if (fieldSaving) return;
+                        setFieldSaving(true);
+                        void api<BucketField>('portalBucketConfigure', { label: bucketField.label, type: bucketField.type })
+                          .then((field) => { setBucketField(field); notify('Requested field saved.'); })
+                          .catch((error) => notify(message(error), true))
+                          .finally(() => setFieldSaving(false));
+                      }}>
+                        <label className="field-label">Field label
+                          <input required maxLength={80} disabled={fieldSaving} value={bucketField.label}
+                            onChange={(event) => setBucketField({ ...bucketField, label: event.target.value })} />
+                        </label>
+                        <label className="field-label">Input type
+                          <select disabled={fieldSaving} value={bucketField.type}
+                            onChange={(event) => setBucketField({ ...bucketField, type: event.target.value as BucketField['type'] })}>
+                            {Object.entries(bucketFieldTypes).map(([type, format]) => <option key={type} value={type}>{format.name}</option>)}
+                          </select>
+                        </label>
+                        <Button type="submit" kind="primary" disabled={fieldSaving}>Save requested field</Button>
+                      </form>
+                    </section>}
                     {permissions.administratorManagement && <AdministratorAccess api={api} signOut={signOut} permanent={context.workspace === 'staff'} />}
                     <section className="data-panel security-card">
                       <Icon name="shield" size={30} />
@@ -1401,7 +1428,7 @@ export default function Dashboard({
                     <section className="data-panel security-card">
                       <Icon name="lock" size={30} />
                       {context.liveSin ? <>
-                        <h2>One-time SIN retrieval</h2>
+                        <h2>One-time retrieval</h2>
                         <p>Reveal &amp; Copy requires a recent Microsoft sign-in. Once requested, the portal removes the active encrypted payload before returning the value.</p>
                         <p>Backups may retain encrypted copies. Handle any clipboard copy according to your organization's practices.</p>
                       </> : <p>Live SIN collection and retrieval are closed.</p>}
@@ -1834,9 +1861,9 @@ export default function Dashboard({
             </>
           ) : dialog.kind === 'reveal-once' ? (
             <div>
-              <p>The portal removes this SIN before releasing it. If delivery fails, it cannot be revealed again.</p>
+              <p>The portal removes this value before releasing it. If delivery fails, it cannot be revealed again.</p>
               {revealed && <label className="field-label">Clipboard blocked. Copy this value manually within 30 seconds.
-                <input readOnly value={revealed} autoComplete="off" onFocus={(event) => event.target.select()} />
+                <textarea readOnly value={revealed} autoComplete="off" onFocus={(event) => event.target.select()} />
               </label>}
               {revealError && <p role="alert">{revealError}</p>}
               <div className="modal-actions">

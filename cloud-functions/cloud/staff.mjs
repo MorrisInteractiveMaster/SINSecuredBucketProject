@@ -117,7 +117,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
       exactKeys(data, []);
       const { role, policy } = await authorize(who, 'statusViewing');
       return {
-        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), uid: who.uid, displayLabel: role.displayLabel,
+        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), bucketField: await sin?.field(), uid: who.uid, displayLabel: role.displayLabel,
         permissions: {
           ...Object.fromEntries(staffPermissions.map((permission) => [permission,
             role[permission] === true && (permission !== 'invitationManagement' || (policy.invitationImportApproved === true && staffGuid.test(policy.privacyApprovalReference || ''))),
@@ -126,7 +126,9 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
         },
       };
     }
-    if (op === 'portalRevealSin' && sin) {
+    if (op === 'portalBucketConfigure' && sin)
+      return sin.configure(who, data, (tx) => authorizeTx(tx, who, 'invitationManagement'));
+    if (op === 'portalBucketReveal' && sin) {
       return sin.reveal(who, data, (tx) => authorizeTx(tx, who, 'statusViewing'));
     }
     if (op === 'portalAdministrators') {

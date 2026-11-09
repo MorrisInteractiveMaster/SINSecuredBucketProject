@@ -448,9 +448,9 @@ test('live contractor enters a fictional SIN and sees confirmation only after su
     local={false} onContext={vi.fn()} notify={vi.fn()} signOut={vi.fn()} />);
   const user = userEvent.setup();
   await user.type(screen.getByLabelText('Social Insurance Number'), '000000018');
-  await user.click(screen.getByRole('button', { name: 'Submit SIN' }));
+  await user.click(screen.getByRole('button', { name: 'Submit' }));
   await screen.findByRole('status');
-  expect(api).toHaveBeenCalledWith('portalSubmitSin', { sin: '000000018' });
+  expect(api).toHaveBeenCalledWith('portalSubmitSin', { value: '000000018', revision: 'initial' });
   expect(screen.queryByDisplayValue('000000018')).not.toBeInTheDocument();
 });
 
@@ -461,9 +461,9 @@ test('live staff Reveal & Copy calls the backend once, copies, and disables anot
   const original = props.api.getMockImplementation()!;
   let removed = false;
   props.api.mockImplementation(async (name) => {
-    if (name === 'portalRevealSin') {
+    if (name === 'portalBucketReveal') {
       removed = true;
-      return { sin: '000000018' } as any;
+      return { value: '000000018' } as any;
     }
     const result = await original(name);
     if (removed && name === 'portalOverview')
@@ -477,7 +477,7 @@ test('live staff Reveal & Copy calls the backend once, copies, and disables anot
     await user.click(screen.getByRole('button', { name: 'Reveal & Copy once', exact: true }));
     await waitFor(() => expect(copy).toHaveBeenCalledWith('000000018'));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Reveal & Copy', exact: true })).toBeDisabled());
-    expect(props.api.mock.calls.filter(([name]) => name === 'portalRevealSin')).toHaveLength(1);
+    expect(props.api.mock.calls.filter(([name]) => name === 'portalBucketReveal')).toHaveLength(1);
     expect(screen.queryByDisplayValue('000000018')).not.toBeInTheDocument();
   } finally {
     copy.mockRestore();
