@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { HttpsError } from 'firebase-functions/v2/https';
 import { PortalError } from '../../functions/lib/security.mjs';
 // Minimal JSON subset of the published Firebase callable protocol.
@@ -43,6 +44,8 @@ export function validEnvelope(body) {
 export function createTransportHandler({ dispatch, verifyAppToken }) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    const reference = randomUUID();
+    let stage = 'request-format';
     try {
       if (
         req.method !== 'POST' ||
@@ -51,15 +54,24 @@ export function createTransportHandler({ dispatch, verifyAppToken }) {
       )
         throw new HttpsError(
           'invalid-argument',
-          'Invalid synthetic test request.',
+          'The portal request format was rejected. Reload the portal and try again.',
         );
+      stage = 'app-check';
       const appToken = req.get('X-Firebase-AppCheck');
       if (typeof appToken !== 'string' || appToken.length > 16384)
         throw new HttpsError(
           'unauthenticated',
           'App verification is required.',
         );
-      const checked = await verifyAppToken(appToken);
+      let checked;
+      try {
+        checked = await verifyAppToken(appToken);
+      } catch (error) {
+        if (['app-check/internal-error', 'app/invalid-credential'].includes(error?.code))
+          throw new HttpsError('unavailable', 'The application verification service is unavailable.');
+        throw new HttpsError('permission-denied', 'Application verification failed. Reload the official portal and try again.');
+      }
+      stage = 'authorization-or-operation';
       const result = await dispatch({
         data: req.body.data,
         rawRequest: req,
@@ -67,16 +79,26 @@ export function createTransportHandler({ dispatch, verifyAppToken }) {
       });
       res.status(200).json({ result });
     } catch (error) {
+      if (error instanceof PortalError && [
+        'microsoft-assertion', 'microsoft-member-binding', 'firebase-auth-reader', 'firebase-session',
+        'staff-policy', 'synthetic-policy',
+      ].includes(error.stage)) stage = error.stage;
+      else if (!(error instanceof PortalError) && !(error instanceof HttpsError) && [7, 14, 'PERMISSION_DENIED', 'UNAVAILABLE'].includes(error?.code))
+        stage = 'backend-access';
       const safe =
         error instanceof PortalError
           ? new HttpsError(error.code, error.message)
           : error instanceof HttpsError
             ? error
             : new HttpsError(
-                'permission-denied',
-                'The synthetic test request could not be authorized.',
+                'unavailable',
+                'A portal backend service is unavailable. Try again or provide the reference to the operator.',
               );
-      res.status(safe.httpErrorCode.status).json({ error: safe.toJSON() });
+      // Fixed categories only. Never record request data, provider claims or upstream exceptions.
+      console.info(JSON.stringify({ event: 'portal_request_rejected', reference, stage, code: safe.code }));
+      res.status(safe.httpErrorCode.status).json({
+        error: { ...safe.toJSON(), details: { reference, stage } },
+      });
     }
   };
 }

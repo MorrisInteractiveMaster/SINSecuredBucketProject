@@ -49,7 +49,7 @@ async function decrypt(keyCustody, id, envelope) {
 // together with optimistic conflict detection. External calls stay outside it.
 // Identity and transfer verifiers must derive their results independently.
 export function createProductionWorkflow({
-  releaseEnabled = false, approval, store, keyCustody, authenticate, verifyTransfer, clock = Date.now,
+  releaseEnabled = false, approval, store, keyCustody, authenticate, verifyTransfer, verifyDisposal, clock = Date.now,
 }) {
   async function access(request, operation, id) {
     if (!releaseEnabled || !requiredApprovals.every((key) => approval?.[key] === true) ||
@@ -113,6 +113,7 @@ export function createProductionWorkflow({
     },
     async dispose(request, id) {
       const actor = await access(request, 'dispose', id);
+      if (typeof verifyDisposal !== 'function' || !await verifyDisposal({ recordId: id, actorUid: actor.uid })) throw failure();
       await store.atomic(async (tx) => {
         const record = await tx.record(id);
         if (record?.state === 'disposed') return;

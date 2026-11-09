@@ -4,13 +4,14 @@ export const DATABASE_ID = 'mi-sin-portal';
 export const DEMO_PROJECT = 'demo-mi-sin-portal';
 export const SYNTHETIC_VALUES = Object.freeze(['000000018', '000000026']);
 export class PortalError extends Error {
-  constructor(code = 'permission-denied', reason = 'Access is not available.') {
+  constructor(code = 'permission-denied', reason = 'Access is not available.', stage) {
     super(reason);
     this.code = code;
+    this.stage = stage;
   }
 }
-export function deny(code = 'permission-denied', reason) {
-  throw new PortalError(code, reason);
+export function deny(code = 'permission-denied', reason, stage) {
+  throw new PortalError(code, reason, stage);
 }
 export const emailKey = (email) =>
   createHash('sha256').update(normalizeEmail(email)).digest('hex');

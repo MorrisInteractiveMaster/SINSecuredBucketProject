@@ -4,6 +4,7 @@ export type Api = <T = any>(
 ) => Promise<T>;
 export type Context = {
   kind: 'admin' | 'contractor';
+  workspace?: 'staff';
   uid?: string;
   displayLabel?: string;
   email?: string;

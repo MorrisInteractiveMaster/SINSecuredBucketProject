@@ -19,6 +19,7 @@ export function createService({
   sendCode,
   tenantId,
   policyMode = 'synthetic-emulator-only',
+  invitationWriteGuard,
 }) {
   const ref = (c, id) => db.collection(c).doc(id);
   const audit = (tx, who, event, invitationId = null) =>
@@ -254,6 +255,7 @@ export function createService({
       }));
       await db.runTransaction(async (tx) => {
         await admin(tx, who, 'invitationManagement');
+        if (invitationWriteGuard) await invitationWriteGuard(tx, who);
         if (approveDedicatedTesters) await admin(tx, who, 'administratorManagement');
         const refs = rows.map((row) => ref('allowlist', emailKey(row.email))),
           snapshots = await tx.getAll(...refs);

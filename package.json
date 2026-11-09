@@ -22,7 +22,7 @@
     "test:cloud:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.cloud-test.emulator.json --only auth,firestore 'node --test --test-concurrency=1 tests/cloud.integration.test.mjs'",
     "test:all": "npm test && npm run test:release && npm run test:emulators && npm run test:emulators:closed && npm run test:mvp:local-http && npm run test:cloud:emulators && npm run test:ui && npm run test:phase4",
     "test:ui": "vitest run",
-    "test:phase4": "node --test --test-timeout=25000 tests/owner-setup.test.mjs tests/production-candidate.test.mjs"
+    "test:phase4": "node --test --test-timeout=25000 tests/owner-setup.test.mjs tests/production-candidate.test.mjs tests/phase5.test.mjs"
   },
   "dependencies": {
     "exceljs-community": "5.2.1",

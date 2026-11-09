@@ -44,7 +44,7 @@ export default function App() {
       else await login(provider, staff);
       providerAuthenticated = true;
       const c = await api<Context>('portalContext');
-      if (!isLocal && staff && c.kind === 'admin' && !c.permissions?.administratorManagement) {
+      if (!isLocal && staff && c.kind === 'admin' && c.workspace !== 'staff' && !c.permissions?.administratorManagement) {
         const setup = await api('portalOwnerSetupStatus').catch(() => null);
         if (setup) {
           setOwnerSetup('activate');
@@ -140,7 +140,7 @@ export default function App() {
       >
         <span>
           <i />
-          SYNTHETIC TEST ENVIRONMENT
+          {context?.workspace === 'staff' ? 'STAFF WORKSPACE · SIN COLLECTION DISABLED' : 'SYNTHETIC TEST ENVIRONMENT'}
         </span>
         <span>
           Real SIN collection, retrieval and disposal remain disabled.

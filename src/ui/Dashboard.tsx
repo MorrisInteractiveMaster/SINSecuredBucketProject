@@ -358,7 +358,7 @@ export default function Dashboard({
     if (!dialog) setDedicatedTesters(false);
   }, [dialog]);
   async function importList(text: string) {
-    if (dedicatedTesters && permissions.administratorManagement) {
+    if (context.workspace !== 'staff' && dedicatedTesters && permissions.administratorManagement) {
       await api('portalImportDedicatedTesters', { csv: text, confirmed: true });
     } else {
       await api('portalImportAllowlist', { csv: text });
@@ -488,7 +488,7 @@ export default function Dashboard({
           <span>SECURE COLLECTION</span>
         </div>
         <div className="workspace-label">
-          WORKSPACE <span className="environment-dot">Synthetic</span>
+          WORKSPACE <span className="environment-dot">{context.workspace === 'staff' ? 'Staff' : 'Synthetic'}</span>
         </div>
         <nav aria-label="Administration">
           {[
@@ -564,7 +564,7 @@ export default function Dashboard({
               <Icon name="lock" size={13} />
               Restricted workspace
             </span>
-            <span className="test-label">SYNTHETIC TEST</span>
+            <span className="test-label">{context.workspace === 'staff' ? 'COLLECTION CLOSED' : 'SYNTHETIC TEST'}</span>
           </div>
         </header>
         <main id="dashboard-main" className="dashboard-main">
@@ -632,7 +632,7 @@ export default function Dashboard({
                     <div className="status-strip">
                       <span>
                         <i />
-                        Connected to the synthetic collection workflow
+                        {context.workspace === 'staff' ? 'Connected to staff invitation metadata' : 'Connected to the synthetic collection workflow'}
                       </span>
                       <span>
                         Updated {time(data.generatedAt)}{' '}
@@ -663,7 +663,7 @@ export default function Dashboard({
                               {key === 'total'
                                 ? 'Approved list, all statuses'
                                 : key === 'submitted'
-                                  ? 'Encrypted synthetic fixtures'
+                                  ? context.workspace === 'staff' ? 'Submission metadata only' : 'Encrypted synthetic fixtures'
                                   : [
                                         'retrieved',
                                         'transferred',
@@ -1318,7 +1318,7 @@ export default function Dashboard({
                 )}
                 {tab === 'security' && (
                   <div className="security-grid">
-                    {permissions.administratorManagement && <AdministratorAccess api={api} signOut={signOut} />}
+                    {permissions.administratorManagement && <AdministratorAccess api={api} signOut={signOut} permanent={context.workspace === 'staff'} />}
                     <section className="data-panel security-card">
                       <Icon name="shield" size={30} />
                       <h2>A small surface for sensitive work.</h2>
@@ -1364,7 +1364,7 @@ export default function Dashboard({
                     <Icon name="shield" size={13} /> Protected by purpose,
                     permissions and careful handling.
                   </span>
-                  <span>Morris Interactive · Synthetic test environment</span>
+                  <span>{context.workspace === 'staff' ? 'Morris Interactive · Staff workspace' : 'Morris Interactive · Synthetic test environment'}</span>
                 </footer>
               </>
             )
@@ -1648,8 +1648,9 @@ export default function Dashboard({
           ) : dialog.kind === 'add' ? (
             <>
               <p>
-                Cloud testing accepts only independently verified dedicated test
-                accounts. The real contractor list stays outside this review.
+                {context.workspace === 'staff'
+                  ? 'Import an approved private contractor list after privacy approval. SIN collection remains closed.'
+                  : 'Cloud testing accepts only independently verified dedicated test accounts.'}
               </p>
               <form
                 onSubmit={(e) => {
@@ -1685,7 +1686,7 @@ export default function Dashboard({
                     onChange={(e) => setAddEmail(e.target.value)}
                   />
                 </label>
-                {permissions.administratorManagement && <label className="callout">
+                {context.workspace !== 'staff' && permissions.administratorManagement && <label className="callout">
                 <input type="checkbox" checked={dedicatedTesters}
                   onChange={(event) => setDedicatedTesters(event.target.checked)} />
                 I independently confirmed that these are dedicated Gmail test accounts.
@@ -1713,7 +1714,7 @@ export default function Dashboard({
                 {csvPreview.length} rows parsed. Review every entry before the
                 backend validates the import.
               </p>
-              {permissions.administratorManagement && <label className="callout">
+              {context.workspace !== 'staff' && permissions.administratorManagement && <label className="callout">
                 <input type="checkbox" checked={dedicatedTesters}
                   onChange={(event) => setDedicatedTesters(event.target.checked)} />
                 I independently confirmed that these are dedicated Gmail test accounts.

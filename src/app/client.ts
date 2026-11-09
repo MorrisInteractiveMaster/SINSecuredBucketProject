@@ -51,7 +51,23 @@ export async function devLogin(role: 'admin' | 'contractor') {
   );
 }
 export function message(error: unknown) {
+  const details = (error as { details?: { stage?: string; reference?: string } })?.details;
+  const reference = details?.reference;
+  const suffix = typeof reference === 'string' && /^[0-9a-f-]{36}$/i.test(reference)
+    ? ' Reference: ' + reference : '';
+  return describeError(error, details?.stage) + suffix;
+}
+function describeError(error: unknown, stage?: string) {
   const code = (error as { code?: string })?.code || '';
+  if (stage === 'request-format') return 'The portal rejected the request format. Reload the official site and try again.';
+  if (stage === 'app-check' && (code === 'functions/permission-denied' || code === 'functions/unauthenticated'))
+    return 'Application verification failed. Reload the official portal and try again.';
+  if (stage === 'microsoft-member-binding')
+    return 'Microsoft organization membership or the linked account could not be verified. Contact the portal operator.';
+  if (stage === 'microsoft-assertion' && code === 'functions/permission-denied')
+    return 'The Microsoft sign-in proof was rejected. Sign in again with your organizational account.';
+  if (stage === 'staff-policy') return 'Staff access is paused. Contact the portal operator.';
+  if (stage === 'synthetic-policy') return 'Synthetic testing is closed or has expired.';
   if (code.includes('already-exists'))
     return 'This invitation already has a submission. No duplicate was created.';
   if (code.includes('resource-exhausted'))
@@ -61,7 +77,7 @@ export function message(error: unknown) {
   if (code.includes('permission-denied'))
     return 'This action is not permitted for your current identity and role.';
   if (code.includes('failed-precondition'))
-    return 'Synthetic testing is not active or its setup is incomplete. Ask the portal operator to review the test policy.';
+    return 'This portal workspace or operation is paused. Ask the portal operator to check its approval and setup.';
   if (
     code === 'functions/unavailable' &&
     (error as { message?: string })?.message ===

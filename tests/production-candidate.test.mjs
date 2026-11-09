@@ -15,6 +15,7 @@ function fixture(options = {}) {
     releaseEnabled: true,
     approval: { security: true, privacy: true, cryptography: true, operations: true, expiresAt: now + 1, noticeVersion: 'v1' },
     authenticate: async () => ({ uid: 'tester', mfaAt: now, permissions: ['submit', 'retrieve', 'transfer', 'dispose'] }),
+    verifyDisposal: async () => true,
     verifyTransfer: async ({ receipt: value }) => value === receipt,
     keyCustody: {
       // Local test double only. Never use this adapter to protect real data.

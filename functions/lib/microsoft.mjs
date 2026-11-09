@@ -13,7 +13,7 @@ export async function verifyOrganizationalAssertion(
     typeof idToken !== 'string' ||
     idToken.length > 16384
   )
-    deny();
+    deny('permission-denied', 'Microsoft sign-in proof is missing or cannot be checked.', 'microsoft-assertion');
   try {
     const { payload } = await jwtVerify(idToken, jwks, {
       algorithms: ['RS256'],
@@ -29,7 +29,7 @@ export async function verifyOrganizationalAssertion(
       payload.oid !== providerUid ||
       ![0, '0'].includes(payload.acct)
     )
-      deny();
+      deny('permission-denied', 'Microsoft organization membership or the linked identity could not be verified.', 'microsoft-member-binding');
     const account = payload.preferred_username ?? payload.email;
     return {
       tenantId: payload.tid, objectId: payload.oid, member: true,
@@ -37,6 +37,8 @@ export async function verifyOrganizationalAssertion(
     };
   } catch (error) {
     if (error instanceof PortalError) throw error;
-    deny();
+    if (['ERR_JWKS_TIMEOUT', 'ERR_JWKS_FETCH_FAILED'].includes(error?.code))
+      deny('unavailable', 'Microsoft identity verification is temporarily unavailable.', 'microsoft-assertion');
+    deny('permission-denied', 'Microsoft sign-in proof was rejected. Sign in again with the approved organizational account.', 'microsoft-assertion');
   }
 }

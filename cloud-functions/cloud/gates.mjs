@@ -39,6 +39,7 @@ export function assertRelease(
     deny(
       'failed-precondition',
       'Synthetic cloud testing is closed or expired.',
+      'synthetic-policy',
     );
   return policy;
 }

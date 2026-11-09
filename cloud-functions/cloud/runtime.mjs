@@ -20,6 +20,7 @@ import {
 } from './gates.mjs';
 import { createSetup } from './setup.mjs';
 import { isInitialOwnerEmail } from '../../functions/lib/admin-roster.mjs';
+import { createStaffWorkspace } from './staff.mjs';
 import { getPortalIdentity } from './identity.mjs';
 const OPERATIONS = [
   'portalActivateOwner', 'portalOwnerSetupStatus', 'portalAdministrators', 'portalOwnerWindow', 'portalImportDedicatedTesters',
@@ -45,6 +46,7 @@ export function createCloudRuntime({
   verifyMicrosoft = verifyOrganizationalAssertion,
 }) {
   const setup = createSetup({ db, clock, projectId, emulator, config: activation, verifyMicrosoft });
+  const staff = createStaffWorkspace({ db, clock, verifyMicrosoft });
   return async function dispatch(request) {
     exactKeys(request.data, ['operation', 'payload', 'microsoftIdToken']);
     if (!OPERATIONS.includes(request.data.operation))
@@ -85,6 +87,13 @@ export function createCloudRuntime({
     };
     const data = request.data.payload ?? {};
     const op = request.data.operation;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(who.uid)) deny();
+    const staffRole = await staff.role(who.uid);
+    if (staffRole) {
+      const bound = await staff.bind(who, request.data.microsoftIdToken, staffRole);
+      await enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock);
+      return staff.dispatch(bound, op, data);
+    }
     let policy;
     if (!['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op)) {
       policy = assertRelease((await db.doc('policy/cloud-test').get()).data(), projectId, clock(), emulator);
@@ -107,32 +116,7 @@ export function createCloudRuntime({
     const identity = (await db.doc(`testIdentities/${who.uid}`).get()).data();
     if (identity || !who.googleMailboxVerified) assertTestIdentity(identity, who);
     else await setup.verifyDedicatedTester(who);
-    // One shared budget for the single cloud callable; rejected traffic still has platform cost.
-    await db.runTransaction(async (tx) => {
-      const globalRef = db.doc('testLimits/global'),
-        uidRef = db.doc(`testLimits/${who.uid}`),
-        g = (await tx.get(globalRef)).data() || {},
-        u = (await tx.get(uidRef)).data() || {},
-        now = clock();
-      const day = g.until?.toMillis() > now ? g.count : 0,
-        minute = u.until?.toMillis() > now ? u.count : 0;
-      if (day >= 1000 || minute >= 30)
-        deny('resource-exhausted', 'Synthetic test request budget reached.');
-      tx.set(globalRef, {
-        count: day + 1,
-        until:
-          g.until?.toMillis() > now
-            ? g.until
-            : Timestamp.fromMillis(now + 86400000),
-      });
-      tx.set(uidRef, {
-        count: minute + 1,
-        until:
-          u.until?.toMillis() > now
-            ? u.until
-            : Timestamp.fromMillis(now + 60000),
-      });
-    });
+    await enforceRequestBudget(db, 'testLimits', who.uid, clock);
     const service = createService({
       db,
       tenantId: policy.tenantId,
@@ -257,4 +241,32 @@ export function createCloudRuntime({
       });
     }
   };
+}
+
+async function enforceRequestBudget(db, collection, uid, clock) {
+  await db.runTransaction(async (tx) => {
+      const globalRef = db.doc(collection + '/global'),
+        uidRef = db.doc(collection + '/' + uid),
+        g = (await tx.get(globalRef)).data() || {},
+        u = (await tx.get(uidRef)).data() || {},
+        now = clock();
+      const day = g.until?.toMillis() > now ? g.count : 0,
+        minute = u.until?.toMillis() > now ? u.count : 0;
+      if (day >= 1000 || minute >= 30)
+        deny('resource-exhausted', 'Portal request budget reached.');
+      tx.set(globalRef, {
+        count: day + 1,
+        until:
+          g.until?.toMillis() > now
+            ? g.until
+            : Timestamp.fromMillis(now + 86400000),
+      });
+      tx.set(uidRef, {
+        count: minute + 1,
+        until:
+          u.until?.toMillis() > now
+            ? u.until
+            : Timestamp.fromMillis(now + 60000),
+      });
+    });
 }

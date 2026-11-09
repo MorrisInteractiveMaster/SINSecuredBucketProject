@@ -9,8 +9,8 @@ export async function getPortalIdentity(auth, idToken) {
     if (['auth/internal-error', 'auth/insufficient-permission', 'app/invalid-credential'].includes(error?.code)) {
       // Log a fixed category only. The Admin SDK error can contain the upstream response.
       console.error('Portal Auth identity lookup unavailable', error.code);
-      deny('unavailable', 'Portal identity verification is unavailable. The operator should check the runtime Auth reader.');
+      deny('unavailable', 'Portal identity verification is unavailable. The operator should check the runtime Auth reader.', 'firebase-auth-reader');
     }
-    deny('unauthenticated', 'Your portal session could not be verified. Sign in again.');
+    deny('unauthenticated', 'Your portal session could not be verified. Sign in again.', 'firebase-session');
   }
 }

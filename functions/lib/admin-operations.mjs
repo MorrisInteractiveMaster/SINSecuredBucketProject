@@ -47,7 +47,7 @@ function safeFilter(filter = {}) {
     if (typeof v !== 'string' || v.length > 254) deny('invalid-argument');
   return filter;
 }
-export function createAdminOperations({ db, service, clock = Date.now }) {
+export function createAdminOperations({ db, service, clock = Date.now, staffMetadata = false }) {
   const audit = async (who, event, invitationId = null, extra = {}) => {
     const r = db.collection('auditEvents').doc();
     await r.create({
@@ -300,7 +300,7 @@ export function createAdminOperations({ db, service, clock = Date.now }) {
         sheet.addRow([
           'Generated on',
           new Date(clock()).toISOString(),
-          'Synthetic test data only',
+          staffMetadata ? 'Restricted invitation metadata' : 'Synthetic test data only',
         ]);
         sheet.addRow(
           fields.map((f) => META_COLUMNS.find(([key]) => key === f)[1]),
