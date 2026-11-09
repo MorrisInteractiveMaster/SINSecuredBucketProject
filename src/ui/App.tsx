@@ -195,7 +195,6 @@ export default function App() {
                 <div />
                 <div />
                 <div />
-                <span>CARE IN EVERY CONNECTION</span>
               </div>
             </section>
             <section className="welcome-card" aria-labelledby="welcome-title">
