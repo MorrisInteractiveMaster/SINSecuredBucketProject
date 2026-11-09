@@ -35,16 +35,22 @@ export default function App() {
   ) {
     setBusy(true);
     setError('');
+    let providerAuthenticated = false;
     try {
       if (fixture) await devLogin(fixture);
       else await login(provider, staff);
+      providerAuthenticated = true;
       const c = await api<Context>('portalContext');
       setContext(c);
       setStep('authorized');
     } catch (e) {
       await logout();
       setContext(null);
-      setError(message(e));
+      setError(
+        providerAuthenticated
+          ? `Sign-in completed, but portal access was not approved. ${message(e)}`
+          : message(e),
+      );
     } finally {
       setBusy(false);
     }
