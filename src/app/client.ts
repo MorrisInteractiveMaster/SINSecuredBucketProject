@@ -60,6 +60,16 @@ export function message(error: unknown) {
     return 'Your session expired. Sign in again.';
   if (code.includes('permission-denied'))
     return 'This action is not permitted for your current identity and role.';
+  if (code.includes('failed-precondition'))
+    return 'Synthetic testing is not active or its setup is incomplete. Ask the portal operator to review the test policy.';
+  if (code.includes('unavailable') || code.includes('deadline-exceeded'))
+    return 'The portal backend could not be reached. Please try again shortly.';
+  if (code.includes('unauthorized-domain'))
+    return 'This website is not an authorized Firebase sign-in domain. Contact the portal operator.';
+  if (code.includes('operation-not-allowed'))
+    return 'This sign-in method is not currently available. Contact the portal operator.';
+  if (code.includes('invalid-credential') || code.includes('invalid-oauth-client-id'))
+    return 'Microsoft sign-in configuration could not be verified. Contact the portal operator.';
   if (code.includes('invalid-argument'))
     return 'Check the selected fields and the approved synthetic-test data.';
   if (
