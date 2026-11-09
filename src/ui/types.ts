@@ -1,3 +1,4 @@
+export type BucketField = { label: string; type: 'sin' | 'account' | 'code' | 'text'; revision: string };
 export type Api = <T = any>(
   name: string,
   data?: Record<string, unknown>,
@@ -5,6 +6,8 @@ export type Api = <T = any>(
 export type Context = {
   kind: 'admin' | 'contractor';
   workspace?: 'staff';
+  liveSin?: boolean;
+  bucketField?: BucketField;
   uid?: string;
   displayLabel?: string;
   email?: string;

@@ -13,11 +13,11 @@ vi.mock('../../src/app/client', () => ({
   message: () => 'Sign-in could not be completed.',
 }));
 import App from '../../src/ui/App';
-test('welcome is accessible, states synthetic restrictions and offers Microsoft/Google without a password system', async () => {
+test('welcome is accessible, describes approved access and offers Microsoft/Google without a password system', async () => {
   render(<App />);
   expect(
     screen.getByText(
-      /Real SIN collection, retrieval and disposal remain disabled/,
+      /Approved contractors can sign in to submit their information securely/,
     ),
   ).toBeInTheDocument();
   expect(

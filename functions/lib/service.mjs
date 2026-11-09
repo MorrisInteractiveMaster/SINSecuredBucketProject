@@ -239,12 +239,12 @@ export function createService({
         deny('permission-denied', 'The code is invalid or expired.');
       return { verified: true };
     },
-    async importCsv(who, csv, { approveDedicatedTesters = false } = {}) {
+    async importCsv(who, csv, { approveDedicatedTesters = false, createOnly = false, renameOnly = false } = {}) {
       let rows;
       try {
         rows = parseAllowlistCsv(csv);
-      } catch {
-        deny('invalid-argument', 'Check the CSV header, rows and limits.');
+      } catch (error) {
+        deny('invalid-argument', error.message, 'invitation-csv');
       }
       if (approveDedicatedTesters && rows.some((row) =>
         !row.email.endsWith('@gmail.com') || !['', 'Test account', 'Test Google'].includes(row.name)
@@ -261,6 +261,14 @@ export function createService({
           snapshots = await tx.getAll(...refs);
         rows.forEach((row, i) => {
           const old = snapshots[i].data();
+          if (createOnly && old) deny('already-exists',
+            'Row ' + (i + 2) + ' already has an invitation. Edit the existing contractor instead.', 'invitation-duplicate');
+          if (renameOnly) {
+            if (!old) deny('not-found', 'The contractor invitation no longer exists.');
+            tx.update(refs[i], { name: row.name, updatedAt: Timestamp.fromMillis(clock()) });
+            audit(tx, who, 'invitation_updated', old.invitationId);
+            return;
+          }
           // Reimport/soft removal NEVER deletes a consumed slot or issues a fresh ID.
           tx.set(refs[i], {
             ...row,

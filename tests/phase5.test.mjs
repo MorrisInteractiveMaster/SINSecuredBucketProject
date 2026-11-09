@@ -72,7 +72,7 @@ test('pinned staff context works without a synthetic window and never grants sen
   rows.set('staffWorkspace/v1/roles/' + who.uid, { ...role, active: false });
   await assert.rejects(staff.dispatch(bound, 'portalContext', {}));
 });
-test('invitation import is guarded by privacy approval and reuses the record on revocation', async () => {
+test('invitation import requires a recorded approval, rejects duplicates and preserves identity when editing', async () => {
   const { staff, rows, signIn } = fixture();
   const bound = await signIn();
   const csv = 'name,email,status\nFictional Person,contractor@example.org,active';
@@ -81,10 +81,18 @@ test('invitation import is guarded by privacy approval and reuses the record on 
   const path = 'staffWorkspace/v1/allowlist/' + emailKey('contractor@example.org');
   assert.equal(rows.has(path), false);
   rows.set('staffWorkspace/v1/policy/access', { ...policy, invitationImportApproved: true });
+  await assert.rejects(staff.dispatch(bound, 'portalImportAllowlist', { csv }),
+    (error) => error.code === 'failed-precondition');
+  rows.set('staffWorkspace/v1/policy/access', { ...policy, invitationImportApproved: true, privacyApprovalReference: objectId });
   assert.deepEqual(await staff.dispatch(bound, 'portalImportAllowlist', { csv }), { imported: 1 });
   const invitationId = rows.get(path).invitationId;
-  await staff.dispatch(bound, 'portalImportAllowlist', { csv: csv.replace('active', 'revoked') });
-  assert.equal(rows.get(path).status, 'revoked');
+  await assert.rejects(staff.dispatch(bound, 'portalImportAllowlist', { csv }),
+    (error) => error.code === 'already-exists');
+  await staff.dispatch(bound, 'portalImportAllowlist', {
+    csv: csv.replace('Fictional Person', 'Updated Name').replace('active', 'revoked'), mode: 'rename',
+  });
+  assert.equal(rows.get(path).status, 'active');
+  assert.equal(rows.get(path).name, 'Updated Name');
   assert.equal(rows.get(path).invitationId, invitationId);
 });
 test('staff binding rejects Google, mismatched identity and revoked roles', async () => {

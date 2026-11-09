@@ -6,7 +6,9 @@ import {
   META_COLUMNS,
 } from '../../functions/lib/metadata.mjs';
 import { parseAllowlistCsv } from '../../functions/lib/csv.mjs';
-import type { Api, Context, Overview, Row, Event } from './types';
+import { message } from '../app/client';
+import { bucketFieldTypes } from '../../functions/lib/bucket-field.mjs';
+import type { Api, Context, Overview, Row, Event, BucketField } from './types';
 import {
   Badge,
   Button,
@@ -77,7 +79,7 @@ export default function Dashboard({
     [page, setPage] = useState(1),
     [size, setSize] = useState(10),
     [selected, setSelected] = useState<string[]>([]),
-    [columns, setColumns] = useState(defaults),
+    [columns, setColumns] = useState(() => context.liveSin ? defaults.filter((field) => !['transferStatus', 'disposalStatus'].includes(field)) : defaults),
     [columnModal, setColumnModal] = useState(false);
   const [drawer, setDrawer] = useState<Row | null>(null),
     [events, setEvents] = useState<Event[]>([]),
@@ -105,6 +107,60 @@ export default function Dashboard({
     [addName, setAddName] = useState('Test account'),
     [addEmail, setAddEmail] = useState('');
   const permissions = context.permissions || {};
+  const [bucketField, setBucketField] = useState(context.bucketField);
+  const [fieldSaving, setFieldSaving] = useState(false);
+  const [revealed, setRevealed] = useState('');
+  const [revealError, setRevealError] = useState('');
+  const revealActive = useRef(false);
+  useEffect(() => {
+    const clear = () => {
+      if (document.hidden) {
+        revealActive.current = false;
+        setRevealed('');
+      }
+    };
+    document.addEventListener('visibilitychange', clear);
+    return () => {
+      document.removeEventListener('visibilitychange', clear);
+      revealActive.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!revealed) return;
+    const timer = setTimeout(() => setRevealed(''), 30000);
+    return () => clearTimeout(timer);
+  }, [revealed]);
+
+  async function revealOnce(id: string) {
+    if (busy || revealActive.current) return;
+    revealActive.current = true;
+    setBusy(true);
+    setRevealError('');
+    try {
+      const { value } = await api<{ value: string }>('portalBucketReveal', { invitationId: id });
+      if (!revealActive.current || document.hidden) {
+        setRevealError('The one-time reveal was consumed while this page was hidden.');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(value);
+        notify('Value copied. It cannot be revealed again.');
+        setDialog(null);
+      } catch {
+        if (revealActive.current && !document.hidden) {
+          setRevealError('The one-time reveal has been consumed.');
+          setRevealed(value);
+        }
+      }
+    } catch (error) {
+      setRevealError(message(error) + ' Refresh the record to check whether the reveal was consumed.');
+    } finally {
+      revealActive.current = false;
+      setBusy(false);
+      await load();
+    }
+  }
+
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (
@@ -357,11 +413,11 @@ export default function Dashboard({
   useEffect(() => {
     if (!dialog) setDedicatedTesters(false);
   }, [dialog]);
-  async function importList(text: string) {
+  async function importList(text: string, mode: 'create' | 'rename' = 'create') {
     if (context.workspace !== 'staff' && dedicatedTesters && permissions.administratorManagement) {
       await api('portalImportDedicatedTesters', { csv: text, confirmed: true });
     } else {
-      await api('portalImportAllowlist', { csv: text });
+      await api('portalImportAllowlist', { csv: text, ...(mode === 'rename' ? { mode } : {}) });
     }
     setDedicatedTesters(false);
     setCsv('');
@@ -379,16 +435,13 @@ export default function Dashboard({
       return;
     }
     try {
-      const text = await file.text(),
-        rows = parseAllowlistCsv(text);
+      const text = await file.text().catch(() => { throw new Error('The CSV file could not be read.'); });
+      const rows = parseAllowlistCsv(text);
       setCsv(text);
       setCsvPreview(rows);
       setDialog({ kind: 'import' });
-    } catch {
-      notify(
-        'Check CSV columns name,email,status, duplicate emails and the 100-row limit.',
-        true,
-      );
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'The CSV file could not be read.', true);
     }
   }
   const countForExport =
@@ -448,6 +501,8 @@ export default function Dashboard({
       );
     if (field.endsWith('At'))
       return <span className={!value ? 'muted' : ''}>{date(value)}</span>;
+    if (field === 'submissionStatus' && context.liveSin && row.retrievalStatus === 'retrieved')
+      return <Badge value="Retrieved / Removed" />;
     if (field.endsWith('Status')) return <Badge value={value} />;
     if (field === 'provider')
       return (
@@ -607,7 +662,11 @@ export default function Dashboard({
                     : 'Invitation management permission is not assigned'
                 }
                 disabled={!permissions.invitationManagement || busy}
-                onClick={() => setDialog({ kind: 'add' })}
+                onClick={() => {
+                  setAddName(context.workspace === 'staff' ? '' : 'Test account');
+                  setAddEmail('');
+                  setDialog({ kind: 'add' });
+                }}
               >
                 Add contractor
               </Button>
@@ -632,7 +691,7 @@ export default function Dashboard({
                     <div className="status-strip">
                       <span>
                         <i />
-                        {context.workspace === 'staff' ? 'Connected to staff invitation metadata' : 'Connected to the synthetic collection workflow'}
+                        {context.liveSin ? 'Connected to secure information collection' : context.workspace === 'staff' ? 'Connected to staff invitation metadata' : 'Connected to the synthetic collection workflow'}
                       </span>
                       <span>
                         Updated {time(data.generatedAt)}{' '}
@@ -641,10 +700,10 @@ export default function Dashboard({
                       </span>
                     </div>
                     <div className="metrics-grid">
-                      {metricList.map(([key, label, icon], i) => (
+                      {metricList.filter(([key]) => !context.liveSin || !['transferred', 'disposed'].includes(key)).map(([key, label, icon], i) => (
                         <Help
                           key={key}
-                          text={`${label}: ${data.metrics[key] || 0} backend records. ${['retrieved', 'transferred', 'disposed'].includes(key) ? 'This production step remains restricted.' : 'Refresh to retrieve the latest count.'}`}
+                          text={`${label}: ${data.metrics[key] || 0} backend records. ${!context.liveSin && ['retrieved', 'transferred', 'disposed'].includes(key) ? 'This production step remains restricted.' : 'Refresh to retrieve the latest count.'}`}
                         >
                           <div
                             className={`metric-card ${i === 0 ? 'lead' : ''}`}
@@ -1318,6 +1377,30 @@ export default function Dashboard({
                 )}
                 {tab === 'security' && (
                   <div className="security-grid">
+                    {bucketField && permissions.invitationManagement && <section className="data-panel security-card">
+                      <h2>Requested information</h2>
+                      <form onSubmit={(event) => {
+                        event.preventDefault();
+                        if (fieldSaving) return;
+                        setFieldSaving(true);
+                        void api<BucketField>('portalBucketConfigure', { label: bucketField.label, type: bucketField.type })
+                          .then((field) => { setBucketField(field); notify('Requested field saved.'); })
+                          .catch((error) => notify(message(error), true))
+                          .finally(() => setFieldSaving(false));
+                      }}>
+                        <label className="field-label">Field label
+                          <input required maxLength={80} disabled={fieldSaving} value={bucketField.label}
+                            onChange={(event) => setBucketField({ ...bucketField, label: event.target.value })} />
+                        </label>
+                        <label className="field-label">Input type
+                          <select disabled={fieldSaving} value={bucketField.type}
+                            onChange={(event) => setBucketField({ ...bucketField, type: event.target.value as BucketField['type'] })}>
+                            {Object.entries(bucketFieldTypes).map(([type, format]) => <option key={type} value={type}>{format.name}</option>)}
+                          </select>
+                        </label>
+                        <Button type="submit" kind="primary" disabled={fieldSaving}>Save requested field</Button>
+                      </form>
+                    </section>}
                     {permissions.administratorManagement && <AdministratorAccess api={api} signOut={signOut} permanent={context.workspace === 'staff'} />}
                     <section className="data-panel security-card">
                       <Icon name="shield" size={30} />
@@ -1344,18 +1427,11 @@ export default function Dashboard({
                     </section>
                     <section className="data-panel security-card">
                       <Icon name="lock" size={30} />
-                      <h2>Restricted until independently reviewed.</h2>
-                      <p>
-                        Retrieval requires a permitted identity, fresh verified
-                        MFA and approved key custody. Transfer and Burn require
-                        an approved official destination and retention process.
-                        These steps remain unavailable.
-                      </p>
-                      <div className="callout">
-                        Removing a portal payload would not instantly erase
-                        provider backups or an organization's legally required
-                        business record.
-                      </div>
+                      {context.liveSin ? <>
+                        <h2>One-time retrieval</h2>
+                        <p>Reveal &amp; Copy requires a recent Microsoft sign-in. Once requested, the portal removes the active encrypted payload before returning the value.</p>
+                        <p>Backups may retain encrypted copies. Handle any clipboard copy according to your organization's practices.</p>
+                      </> : <p>Live SIN collection and retrieval are closed.</p>}
                     </section>
                   </div>
                 )}
@@ -1390,7 +1466,7 @@ export default function Dashboard({
             </div>
             <h2 id="record-title">{drawer.name || 'Test account'}</h2>
             <p className="muted">{drawer.email}</p>
-            <Badge value={drawer.submissionStatus} />
+            <Badge value={context.liveSin && drawer.retrievalStatus === 'retrieved' ? 'Retrieved / Removed' : drawer.submissionStatus} />
             <dl className="record-fields">
               {[
                 ['name', 'Name'],
@@ -1414,7 +1490,7 @@ export default function Dashboard({
                 ['Retrieval', drawer.retrievalStatus],
                 ['Transfer', drawer.transferStatus],
                 ['Disposal', drawer.disposalStatus],
-              ].map(([label, value]) => (
+              ].filter(([label]) => !context.liveSin || label === 'Retrieval').map(([label, value]) => (
                 <div key={label}>
                   <span>{label}</span>
                   <Badge value={value} />
@@ -1422,6 +1498,15 @@ export default function Dashboard({
               ))}
             </div>
             <div className="drawer-actions">
+              {context.liveSin ? <Button
+                icon="lock"
+                disabled={busy || !drawer.submittedAt || drawer.retrievalStatus !== 'not_started'}
+                onClick={() => {
+                  setRevealError('');
+                  setRevealed('');
+                  setDialog({ kind: 'reveal-once', row: drawer });
+                }}
+              >Reveal &amp; Copy</Button> : <>
               <Button
                 icon="lock"
                 title="Review retrieval prerequisites; no sensitive data will be revealed"
@@ -1468,7 +1553,17 @@ export default function Dashboard({
                 }}
               >
                 Request correction
-              </Button>
+              </Button></>}
+              {context.workspace === 'staff' && <Button
+                disabled={!permissions.invitationManagement || busy}
+                onClick={() => {
+                  setAddName(drawer.name);
+                  setAddEmail(drawer.email);
+                  setDialog({ kind: 'add', row: drawer });
+                }}
+              >
+                Edit contractor name
+              </Button>}
               <Button
                 title="Revoke this invitation; preserve the existing record"
                 disabled={
@@ -1562,10 +1657,12 @@ export default function Dashboard({
             dialog.kind === 'export'
               ? 'Export authorized metadata'
               : dialog.kind === 'add'
-                ? 'Add approved test identities'
+                ? context.workspace === 'staff' ? 'Manage approved contractor access' : 'Add approved test identities'
                 : dialog.kind === 'import'
                   ? 'Review CSV import'
-                  : dialog.kind === 'burn'
+                  : dialog.kind === 'reveal-once'
+                    ? 'Reveal & Copy'
+                    : dialog.kind === 'burn'
                     ? 'Burn · secure disposal'
                     : dialog.kind === 'retrieval'
                       ? 'Controlled retrieval'
@@ -1579,6 +1676,7 @@ export default function Dashboard({
           }
           onClose={() => {
             if (!busy) {
+              setRevealed('');
               setDialog(null);
               setConfirmed(false);
             }
@@ -1649,21 +1747,29 @@ export default function Dashboard({
             <>
               <p>
                 {context.workspace === 'staff'
-                  ? 'Import an approved private contractor list after privacy approval. SIN collection remains closed.'
+                  ? 'Manage approved contractor metadata. SIN collection remains closed.'
                   : 'Cloud testing accepts only independently verified dedicated test accounts.'}
               </p>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   void action(async () => {
+                    const quote = (value: string) => '"' + value.replaceAll('"', '""') + '"';
                     await importList(
-                      `name,email,status\n${JSON.stringify(addName)},${JSON.stringify(addEmail)},active`,
+                      `name,email,status\n${quote(addName)},${quote(addEmail)},active`,
+                      dialog.row ? 'rename' : 'create',
                     );
                     setAddEmail('');
                   });
                 }}
               >
-                <label className="field-label">
+                {context.workspace === 'staff' ? (
+                  <label className="field-label">
+                    Contractor name
+                    <input required maxLength={100} value={addName}
+                      onChange={(event) => setAddName(event.target.value)} />
+                  </label>
+                ) : <label className="field-label">
                   Test label
                   <select
                     value={addName}
@@ -1675,7 +1781,7 @@ export default function Dashboard({
                       ),
                     )}
                   </select>
-                </label>
+                </label>}
                 <label className="field-label">
                   Approved email
                   <input
@@ -1683,6 +1789,7 @@ export default function Dashboard({
                     type="email"
                     maxLength={254}
                     value={addEmail}
+                    readOnly={Boolean(dialog.row)}
                     onChange={(e) => setAddEmail(e.target.value)}
                   />
                 </label>
@@ -1692,10 +1799,10 @@ export default function Dashboard({
                 I independently confirmed that these are dedicated Gmail test accounts.
               </label>}
                 <Button type="submit" kind="primary" busy={busy}>
-                  Add approved identity
+                  {dialog.row ? 'Save contractor name' : 'Add approved identity'}
                 </Button>
               </form>
-              <div className="divider-label">or import a CSV</div>
+              {!dialog.row && <><div className="divider-label">or import a CSV</div>
               <label className="upload-zone">
                 <Icon name="upload" />
                 <strong>Choose approved email CSV</strong>
@@ -1706,7 +1813,7 @@ export default function Dashboard({
                   aria-label="Import approved email CSV"
                   onChange={(e) => void readCsv(e.target.files?.[0])}
                 />
-              </label>
+              </label></>}
             </>
           ) : dialog.kind === 'import' ? (
             <>
@@ -1752,6 +1859,19 @@ export default function Dashboard({
                 </Button>
               </div>
             </>
+          ) : dialog.kind === 'reveal-once' ? (
+            <div>
+              <p>The portal removes this value before releasing it. If delivery fails, it cannot be revealed again.</p>
+              {revealed && <label className="field-label">Clipboard blocked. Copy this value manually within 30 seconds.
+                <textarea readOnly value={revealed} autoComplete="off" onFocus={(event) => event.target.select()} />
+              </label>}
+              {revealError && <p role="alert">{revealError}</p>}
+              <div className="modal-actions">
+                <Button disabled={busy} onClick={() => { setRevealed(''); setDialog(null); }}>Close</Button>
+                <Button kind="primary" disabled={busy || Boolean(revealed || revealError)}
+                  onClick={() => void revealOnce(dialog.row!.invitationId)}>Reveal &amp; Copy once</Button>
+              </div>
+            </div>
           ) : ['burn', 'retrieval', 'transfer'].includes(dialog.kind) ? (
             <>
               <div className="gate-symbol">

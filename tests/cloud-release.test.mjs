@@ -469,3 +469,22 @@ test('Phase 3 preserves isolation, server-only workbook generation and disabled 
   );
   assert.match(rules, /allow read, write: if false/);
 });
+
+test('verification mail sends only a mailbox code through the configured HTTPS provider', async () => {
+  const { createVerificationMailer, verificationMailConfig } = await import('../cloud-functions/cloud/verification-mail.mjs');
+  assert.equal(verificationMailConfig('{}'), undefined);
+  const config = verificationMailConfig(JSON.stringify({
+    apiKey: 're_fixture_key_only_123', from: 'portal@example.org', hmacKey: 'ab'.repeat(32),
+  }));
+  const send = createVerificationMailer(() => config, async (url, request) => {
+    assert.equal(url, 'https://api.resend.com/emails');
+    assert.equal(request.headers['Idempotency-Key'], 'bucket-mailbox/fixture');
+    assert.equal(request.redirect, 'error');
+    const mail = JSON.parse(request.body);
+    assert.deepEqual(mail.to, ['contractor@example.org']);
+    assert.match(mail.text, /12345678/);
+    assert.doesNotMatch(mail.text, /https?:|invitation|SIN/);
+    return { ok: true };
+  });
+  await send('contractor@example.org', '12345678', 'fixture');
+});

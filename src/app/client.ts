@@ -66,6 +66,17 @@ function describeError(error: unknown, stage?: string) {
     return 'Microsoft organization membership or the linked account could not be verified. Contact the portal operator.';
   if (stage === 'microsoft-assertion' && code === 'functions/permission-denied')
     return 'The Microsoft sign-in proof was rejected. Sign in again with your organizational account.';
+  if (stage === 'invitation-duplicate' && code === 'functions/already-exists')
+    return 'An imported row already has an invitation. No rows were added. Edit the existing contractor instead.';
+  if (stage === 'invitation-csv' && code === 'functions/invalid-argument')
+    return 'Check the CSV preview for invalid columns, email addresses, statuses, or duplicate rows.';
+  if (stage === 'bucket-mail') return 'Verification email is unavailable. Wait a minute and try again.';
+  if (stage === 'bucket-mail-rate') return 'Please wait before requesting another code.';
+  if (stage === 'bucket-code') return 'Check your eight-digit verification code. Request a new one if it expired.';
+  if (stage === 'bucket-field-changed') return 'The requested field changed. Reload the portal before submitting.';
+  if (stage === 'bucket-value') return 'Check the requested value format.';
+  if (stage === 'sin-unavailable') return 'This value is unavailable or has already been removed.';
+  if (stage === 'sin-delivery') return 'The one-time reveal was consumed, but delivery failed.';
   if (stage === 'staff-policy') return 'Staff access is paused. Contact the portal operator.';
   if (stage === 'synthetic-policy') return 'Synthetic testing is closed or has expired.';
   if (code.includes('already-exists'))

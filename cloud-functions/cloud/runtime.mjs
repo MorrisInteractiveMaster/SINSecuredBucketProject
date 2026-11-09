@@ -6,6 +6,7 @@ import { createService } from '../../functions/lib/service.mjs';
 import { normalizeEmail, parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import {
   checkProvider,
+  trustsEmail,
   checkFresh,
   emailKey,
   deny,
@@ -20,14 +21,15 @@ import {
 } from './gates.mjs';
 import { createSetup } from './setup.mjs';
 import { isInitialOwnerEmail } from '../../functions/lib/admin-roster.mjs';
-import { createStaffWorkspace } from './staff.mjs';
+import { createStaffWorkspace, staffScope } from './staff.mjs';
+import { createOneTimeSin } from './one-time-sin.mjs';
 import { getPortalIdentity } from './identity.mjs';
 const OPERATIONS = [
   'portalActivateOwner', 'portalOwnerSetupStatus', 'portalAdministrators', 'portalOwnerWindow', 'portalImportDedicatedTesters',
   'portalContext',
   'portalImportAllowlist',
   'portalListContractors',
-  'portalSubmit',
+  'portalSubmit', 'portalSubmitSin', 'portalBucketReveal', 'portalBucketSendCode', 'portalBucketVerifyCode', 'portalBucketConfigure',
   'portalRequestCorrection',
   'portalOverview',
   'portalActivity',
@@ -42,11 +44,18 @@ export function createCloudRuntime({
   projectId,
   emulator = false,
   activation,
+  credential,
+  custody,
+  kmsFetcher,
+  mailer,
+  verificationSecret,
+  staffRoster,
   clock = Date.now,
   verifyMicrosoft = verifyOrganizationalAssertion,
 }) {
   const setup = createSetup({ db, clock, projectId, emulator, config: activation, verifyMicrosoft });
-  const staff = createStaffWorkspace({ db, clock, verifyMicrosoft });
+  const sin = credential || custody ? createOneTimeSin({ db: staffScope(db), clock, credential, custody, kmsFetcher, mailer, verificationSecret }) : undefined;
+  const staff = createStaffWorkspace({ db, clock, verifyMicrosoft, sin, roster: staffRoster });
   return async function dispatch(request) {
     exactKeys(request.data, ['operation', 'payload', 'microsoftIdToken']);
     if (!OPERATIONS.includes(request.data.operation))
@@ -83,6 +92,7 @@ export function createCloudRuntime({
       authTime: token.auth_time, emailTrusted: true,
       googleMailboxVerified: providerId === 'google.com' && token.email_verified === true &&
         providerEmail === email && email.endsWith('@gmail.com'),
+      verifiedLinkedMailbox: trustsEmail(providerId, email, token.email_verified === true && user.emailVerified === true && providerEmail === email),
       microsoftMailboxMatched: providerEmail === email,
       linkedMailboxConflict: Boolean(providerEmail && providerEmail !== email),
     };
@@ -93,6 +103,15 @@ export function createCloudRuntime({
     const staffActor = await staff.resolve(who, request.data.microsoftIdToken, op,
       () => enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock));
     if (staffActor) return staff.dispatch(staffActor, op, data);
+    if (op === 'portalBucketReveal' || op === 'portalBucketConfigure') deny();
+    const bucketOps = {
+      portalSubmitSin: 'submit', portalBucketSendCode: 'issueCode', portalBucketVerifyCode: 'verifyCode',
+    };
+    if (sin && (Object.hasOwn(bucketOps, op) || (op === 'portalContext' && await sin.enabled()))) {
+      await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
+      return sin[bucketOps[op] ?? 'context'](who, data);
+    }
+    if (Object.hasOwn(bucketOps, op)) deny('failed-precondition');
     let policy;
     if (!['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op)) {
       policy = assertRelease((await db.doc('policy/cloud-test').get()).data(), projectId, clock(), emulator);
