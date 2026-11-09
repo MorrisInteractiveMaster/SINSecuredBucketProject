@@ -398,6 +398,17 @@ test('Enterprise App Check uses the public site key with CSP coverage and no sha
     assert.ok(
       directives[directive].includes('https://www.google.com/recaptcha/'),
     );
+  // Firebase Auth popup loads gapi; Enterprise App Check exchanges the attestation.
+  // Keep these as exact HTTPS origins; don't widen to *.googleapis.com.
+  assert.ok(directives['script-src'].includes('https://apis.google.com'));
+  assert.ok(
+    directives['connect-src'].includes('https://content-firebaseappcheck.googleapis.com'),
+  );
+  assert.ok(directives['connect-src'].includes('https://www.googleapis.com'));
+  for (const directive of ['script-src', 'connect-src']) {
+    assert.equal(directives[directive].includes('*'), false);
+    assert.equal(directives[directive].includes('https://*.googleapis.com'), false);
+  }
   assert.equal(directives['script-src'].includes("'unsafe-inline'"), false);
   assert.equal(directives['script-src'].includes('*'), false);
   const backend = readFileSync('cloud-functions/index.mjs', 'utf8');
