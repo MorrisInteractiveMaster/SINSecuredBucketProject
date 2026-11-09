@@ -6,7 +6,65 @@ import {
   normalizeAndValidate,
   encryptSin,
 } from '../app/encryption';
-export default function Contractor({
+export default function Contractor(props: Parameters<typeof FixtureContractor>[0]) {
+  return props.context.liveSin ? <LiveContractor {...props} /> : <FixtureContractor {...props} />;
+}
+
+function LiveContractor({ context, api, signOut }: Parameters<typeof FixtureContractor>[0]) {
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [complete, setComplete] = useState(false);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const clear = () => { if (document.hidden) setValue(''); };
+    document.addEventListener('visibilitychange', clear);
+    return () => document.removeEventListener('visibilitychange', clear);
+  }, []);
+  async function submit(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setError('');
+    let sin: string;
+    try {
+      sin = normalizeAndValidate(value);
+    } catch {
+      setError('Enter a valid nine-digit Canadian SIN.');
+      return;
+    }
+    setBusy(true);
+    setValue('');
+    try {
+      await api('portalSubmitSin', { sin });
+      setComplete(true);
+    } catch (cause) {
+      if ((cause as { code?: string }).code === 'functions/already-exists') setComplete(true);
+      else setError('Submission could not be confirmed. Check your connection or sign in again to check the status.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  return <div className="contractor-shell">
+    <header className="public-header">
+      <img src="/brand/mi-logo-white.png" alt="Morris Interactive" />
+      <Button icon="logout" onClick={signOut}>Sign out</Button>
+    </header>
+    <main className="contractor-main">
+      <h1>Secure SIN submission</h1>
+      {context.submitted || complete ? <p role="status">Your SIN has been submitted securely.</p> :
+        <form onSubmit={(event) => void submit(event)}>
+          <p>Morris Interactive will receive your SIN. An authorized administrator can retrieve it once.</p>
+          <label className="field-label">Social Insurance Number
+            <input type="password" inputMode="numeric" autoComplete="off" required maxLength={24}
+              value={value} disabled={busy} onChange={(event) => setValue(event.target.value)} />
+          </label>
+          {error && <p role="alert">{error}</p>}
+          <Button type="submit" kind="primary" busy={busy} disabled={busy}>Submit SIN</Button>
+        </form>}
+    </main>
+  </div>;
+}
+
+function FixtureContractor({
   context,
   api,
   local,

@@ -91,3 +91,29 @@ node scripts/provision-staff-workspace.mjs operator-input.staff.json --approve-i
 The approval command checks the input before cloud authentication. It records the reference in the policy and audit event in one transaction. Repeating the same approval is safe. A conflicting approval reference requires review. The command reports missing approval, token acquisition, named-database IAM denial, and unavailable service as separate error categories.
 
 After a scoped release, use the staff dashboard to add an approved identity or preview and confirm the private CSV. Imports reject existing invitations atomically. Use the contractor details to update the name or revoke the invitation while retaining its existing ID and submission slot. Creating a metadata record does not send an invitation email. Confirm delivery through an approved organizational channel. The SIN workflow remains separate.
+
+## One-time SIN release
+
+The scoped callable and frontend include the submit and Reveal & Copy operations. The existing deployment command names are retained. Deployment leaves live collection closed until the separate `policy/sin-release` gate is authorized. The operator must verify scoped IAM, runtime request-body log exclusions, backup/PITR settings and the approved release before opening that gate. The portal requires a recently authenticated, active, Microsoft-bound staff role to reveal. The contractor sign-in path currently accepts verified Gmail through Google and Outlook or Hotmail through Microsoft. Firebase does not treat a Google or Microsoft email on an unrelated domain as authoritative based solely on provider sign-in.
+
+1. Identify the approved symmetric Cloud KMS key in a Canadian location. In **Google Cloud Console → Security → Key Management → key ring → key → Permissions**, grant **Cloud KMS CryptoKey Encrypter/Decrypter** on this key only to `mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com`. The one scoped callable uses this runtime identity for both operations. Verify that the runtime can encrypt and decrypt with that key and that key rotation preserves versions needed by sealed records.
+2. From the reviewed revision and the existing approved Cloud Shell session, use the existing portal configuration and deploy only the dedicated Function and Hosting target. The reviewed configuration must retain deny-all client Firestore rules for the named database.
+
+   ```sh
+   npm ci --ignore-scripts
+   node scripts/configure-cloud-test.mjs
+   npm run build:cloud-test
+   node scripts/check-ui-artifact.mjs
+   node scripts/launch-cloud-test.mjs functions --execute
+   node scripts/launch-cloud-test.mjs live --execute
+   ```
+
+3. After verification and the recorded release decision, set `sinReleaseApprovalReference` to that decision's existing UUID and `sinKmsKey` to the full approved KMS key resource in the private `operator-input.staff.json`. The same file uses the existing tenant, client and recorded metadata-approval fields. If metadata approval is still closed, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --approve-invitations` with its actual approval reference first. Then use the approved keyless operator session.
+
+   ```sh
+   node scripts/provision-staff-workspace.mjs operator-input.staff.json --enable-sin
+   ```
+
+   Type `APPROVE LIVE SIN RELEASE` only after the authorization is recorded. Share the portal URL manually with approved contractors. The service sends no invitation emails.
+
+To halt submission and reveal without touching other apps, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --pause-sin`. Each reveal deletes the active payload and wrapped key before returning the value. If the request is interrupted after that transaction, the value cannot be reopened. Clipboard and copies taken outside the portal are outside its control. Backup and point-in-time copies may retain encrypted material under their configured retention. Never restore old submission, entitlement or payload state over the live portal. An isolated restore for investigation must remain disconnected from the live callable.

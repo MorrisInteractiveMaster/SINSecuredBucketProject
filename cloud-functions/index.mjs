@@ -1,5 +1,5 @@
 import { onRequest } from 'firebase-functions/v2/https';
-import { initializeApp } from 'firebase-admin/app';
+import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
 import { getAppCheck } from 'firebase-admin/app-check';
@@ -13,6 +13,7 @@ const dispatch = createCloudRuntime({
   db: getFirestore(app, 'mi-sin-portal'),
   auth: getAuth(app),
   projectId,
+  credential: applicationDefault(),
   activation: {
     digest: process.env.MI_OWNER_SETUP_DIGEST,
     expiresAt: process.env.MI_OWNER_SETUP_EXPIRES_AT,

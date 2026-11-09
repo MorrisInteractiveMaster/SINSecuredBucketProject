@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   initializeTestEnvironment,
   assertFails,
@@ -19,6 +19,8 @@ import {
 } from 'firebase/firestore';
 import { readFileSync } from 'node:fs';
 import { createCloudRuntime } from '../cloud-functions/cloud/runtime.mjs';
+import { emailKey } from '../functions/lib/security.mjs';
+import { createTransportHandler } from '../cloud-functions/cloud/transport.mjs';
 import { TARGET } from '../cloud-functions/cloud/gates.mjs';
 if (
   process.env.GCLOUD_PROJECT !== 'demo-mi-sin-portal' ||
@@ -39,7 +41,7 @@ const guid = '11111111-1111-1111-1111-111111111111';
 function jwt(payload) {
   return `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.`;
 }
-async function token(providerId, email, sub) {
+async function token(providerId, email, sub, verified = false) {
   const r = await fetch(
     'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=demo-only',
     {
@@ -53,7 +55,7 @@ async function token(providerId, email, sub) {
             sub,
             oid: sub,
             email,
-            email_verified: false,
+            email_verified: verified,
             iss: 'https://accounts.google.com',
             aud: 'demo-only',
           }),
@@ -466,4 +468,86 @@ test('multiple approved Microsoft UID bindings remain independent and role revoc
   );
   assert.ok((await db.doc(`roles/${primary}`).get()).data().active);
   await db.doc('policy/cloud-test').update({ adminUids: [primary] });
+});
+
+test('live UI operations through callable transport and named Firestore consume and remove a SIN once', async () => {
+  const admin = 'staff@example.org';
+  const staffUid = request(adminToken).auth.uid;
+  const contractorEmail = 'one-time-fixture@gmail.com';
+  const contractor = await token('google.com', contractorEmail, 'one-time-fictional', true);
+  const staffPolicy = db.doc('staffWorkspace/v1/policy/access');
+  const release = db.doc('staffWorkspace/v1/policy/sin-release');
+  const role = db.doc('staffWorkspace/v1/roles/' + staffUid);
+  const id = randomUUID();
+  const entry = db.doc('staffWorkspace/v1/allowlist/' + emailKey(contractorEmail));
+  const payload = db.doc('staffWorkspace/v1/sealedSin/' + id);
+  const metadata = db.doc('staffWorkspace/v1/submissions/' + id);
+  let unwrapFails = false;
+  const wrappingMask = Buffer.alloc(32, 42);
+  const transform = (key) => Buffer.from(key.map((byte, i) => byte ^ wrappingMask[i]));
+  await Promise.all([
+    staffPolicy.set({ ...policy, version: 1, invitationImportApproved: true, privacyApprovalReference: guid }),
+    role.set({ active: true, objectId: guid, tenantId: guid, emailKey: emailKey(admin), statusViewing: true }),
+    entry.set({ invitationId: id, email: contractorEmail, status: 'active', expiresAt: Timestamp.fromMillis(Date.now() + 3600000) }),
+  ]);
+  const live = createCloudRuntime({
+    db, auth, projectId: 'demo-mi-sin-portal', emulator: true,
+    staffRoster: [{ key: emailKey(admin), label: 'Fictional staff' }],
+    verifyMicrosoft: async () => ({ tenantId: guid, objectId: guid, member: true, accountEmail: admin }),
+    custody: (_, operation) => operation === 'encrypt' ? { wrap: async (key) => transform(key) } : {
+      unwrap: async (key) => {
+        if (unwrapFails) throw new Error('simulated KMS failure');
+        return transform(key);
+      },
+    },
+  });
+  const handler = createTransportHandler({
+    dispatch: live,
+    verifyAppToken: async () => ({ appId: TARGET.appId }),
+  });
+  async function call(t, op, data = {}) {
+    const input = request(t, op, data);
+    const response = { setHeader(name, value) { assert.equal(value, 'no-store'); },
+      status(code) { this.code = code; return this; },
+      json(body) { this.body = body; },
+    };
+    await handler({ ...input.rawRequest, method: 'POST', is: () => true, get: () => 'fixture-app-check',
+      body: { data: input.data },
+    }, response);
+    return response;
+  }
+  assert.notEqual((await call(contractor, 'portalSubmitSin', { sin: '000000018' })).code, 200);
+  await release.set({ enabled: true, approvalReference: guid,
+    kmsKey: 'projects/fictional-keys/locations/northamerica-northeast1/keyRings/fixture/cryptoKeys/fixture',
+  });
+  assert.equal((await call(contractor, 'portalContext')).body.result.liveSin, true);
+  assert.equal((await call(contractor, 'portalSubmitSin', { sin: '000000019' })).code, 400);
+  assert.equal((await call(outsiderToken, 'portalSubmitSin', { sin: '000000018' })).code, 403);
+  const submit = () => call(contractor, 'portalSubmitSin', { sin: '000000018' });
+  assert.deepEqual((await Promise.all([submit(), submit()])).map((r) => r.code).sort(), [200, 409]);
+  const sealed = (await payload.get()).data();
+  assert.equal(sealed.ciphertext.length, 9);
+  assert.equal(JSON.stringify(sealed).includes('000000018'), false);
+  assert.equal((await call(contractor, 'portalContext')).body.result.submitted, true);
+  assert.equal((await call(contractor, 'portalRevealSin', { invitationId: id })).code, 403);
+  const reveal = () => call(adminToken, 'portalRevealSin', { invitationId: id });
+  const results = await Promise.all([reveal(), reveal()]);
+  assert.equal(results.filter((r) => r.code === 200).length, 1);
+  assert.equal(results.find((r) => r.code === 200).body.result.sin, '000000018');
+  assert.notEqual((await reveal()).code, 200);
+  assert.equal((await payload.get()).exists, false);
+  assert.equal((await metadata.get()).data().retrievalStatus, 'retrieved');
+  assert.equal((await metadata.get()).data().disposalStatus, 'disposed');
+  assert.equal((await submit()).code, 409);
+  const second = randomUUID();
+  await entry.update({ invitationId: second });
+  assert.equal((await submit()).code, 200);
+  unwrapFails = true;
+  assert.notEqual((await call(adminToken, 'portalRevealSin', { invitationId: second })).code, 200);
+  assert.equal((await db.doc('staffWorkspace/v1/sealedSin/' + second).get()).exists, false);
+  unwrapFails = false;
+  assert.notEqual((await call(adminToken, 'portalRevealSin', { invitationId: second })).code, 200);
+  const audit = await db.collection('staffWorkspace/v1/auditEvents').get();
+  assert.equal(audit.docs.filter((doc) => doc.data().event === 'sin_reveal_consumed').length, 2);
+  assert.equal(JSON.stringify(audit.docs.map((doc) => doc.data())).includes('000000018'), false);
 });

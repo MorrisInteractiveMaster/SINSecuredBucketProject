@@ -81,7 +81,7 @@ export function createTransportHandler({ dispatch, verifyAppToken }) {
     } catch (error) {
       if (error instanceof PortalError && [
         'microsoft-assertion', 'microsoft-member-binding', 'firebase-auth-reader', 'firebase-session',
-        'staff-policy', 'synthetic-policy',
+        'staff-policy', 'synthetic-policy', 'sin-unavailable', 'sin-delivery', 'sin-mailbox', 'invitation-csv', 'invitation-duplicate',
       ].includes(error.stage)) stage = error.stage;
       else if (!(error instanceof PortalError) && !(error instanceof HttpsError) && [7, 14, 'PERMISSION_DENIED', 'UNAVAILABLE'].includes(error?.code))
         stage = 'backend-access';

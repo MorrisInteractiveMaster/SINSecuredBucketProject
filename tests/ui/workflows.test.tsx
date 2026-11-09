@@ -441,3 +441,45 @@ test('backend submission failure leaves the review available and never shows suc
     ),
   ).not.toBeInTheDocument();
 });
+
+test('live contractor enters a fictional SIN and sees confirmation only after submission', async () => {
+  const api = vi.fn().mockResolvedValue({ accepted: true });
+  render(<Contractor context={{ kind: 'contractor', liveSin: true } as any} api={api}
+    local={false} onContext={vi.fn()} notify={vi.fn()} signOut={vi.fn()} />);
+  const user = userEvent.setup();
+  await user.type(screen.getByLabelText('Social Insurance Number'), '000000018');
+  await user.click(screen.getByRole('button', { name: 'Submit SIN' }));
+  await screen.findByRole('status');
+  expect(api).toHaveBeenCalledWith('portalSubmitSin', { sin: '000000018' });
+  expect(screen.queryByDisplayValue('000000018')).not.toBeInTheDocument();
+});
+
+test('live staff Reveal & Copy calls the backend once, copies, and disables another reveal', async () => {
+  const user = userEvent.setup();
+  const copy = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue(undefined);
+  const props = fixture();
+  const original = props.api.getMockImplementation()!;
+  let removed = false;
+  props.api.mockImplementation(async (name) => {
+    if (name === 'portalRevealSin') {
+      removed = true;
+      return { sin: '000000018' } as any;
+    }
+    const result = await original(name);
+    if (removed && name === 'portalOverview')
+      return { ...result, rows: [{ ...row, retrievalStatus: 'retrieved', disposalStatus: 'disposed' }] } as any;
+    return result;
+  });
+  try {
+    await open(props, { ...context, workspace: 'staff', liveSin: true });
+    await user.click(screen.getByRole('button', { name: 'Alex Example', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Reveal & Copy', exact: true }));
+    await user.click(screen.getByRole('button', { name: 'Reveal & Copy once', exact: true }));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith('000000018'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Reveal & Copy', exact: true })).toBeDisabled());
+    expect(props.api.mock.calls.filter(([name]) => name === 'portalRevealSin')).toHaveLength(1);
+    expect(screen.queryByDisplayValue('000000018')).not.toBeInTheDocument();
+  } finally {
+    copy.mockRestore();
+  }
+});

@@ -5,6 +5,7 @@ export type Api = <T = any>(
 export type Context = {
   kind: 'admin' | 'contractor';
   workspace?: 'staff';
+  liveSin?: boolean;
   uid?: string;
   displayLabel?: string;
   email?: string;

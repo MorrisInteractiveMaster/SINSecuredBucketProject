@@ -133,7 +133,7 @@ export default function App() {
   }, [toast]);
   return (
     <>
-      <div
+      {context && !context.liveSin && <div
         className="test-ribbon"
         role="region"
         aria-label="Environment restrictions"
@@ -145,7 +145,7 @@ export default function App() {
         <span>
           Real SIN collection, retrieval and disposal remain disabled.
         </span>
-      </div>
+      </div>}
       {ownerSetup ? (
         <OwnerSetup mode={ownerSetup} api={api} signOut={() => void signOut()}
           continueToPortal={async () => {
@@ -272,8 +272,7 @@ export default function App() {
                 <>
                   <h2 id="welcome-title">Welcome to the secure portal.</h2>
                   <p>
-                    This review environment lets approved people test the
-                    collection journey using two fixed synthetic fixtures.
+                    Approved contractors can sign in to submit their information securely.
                   </p>
                   <div className="welcome-points">
                     <div>
@@ -297,7 +296,7 @@ export default function App() {
                       <span>03</span>
                       <div>
                         <strong>Review, then submit once</strong>
-                        <p>No real SIN is accepted during this test.</p>
+                        <p>Your submission is checked and confirmed by the portal.</p>
                       </div>
                     </div>
                   </div>
@@ -311,11 +310,7 @@ export default function App() {
                   >
                     Continue to secure sign-in
                   </Button>
-                  <p className="fine-print">
-                    Before real collection, Morris Interactive must approve the
-                    business purpose, privacy notice, retention period and
-                    privacy contact.
-                  </p>
+
                 </>
               ) : (
                 <>
@@ -408,7 +403,7 @@ export default function App() {
             <span>It starts with people.</span>
             <span>
               <Icon name="lock" size={13} />
-              Synthetic testing only
+              Approved accounts only
             </span>
           </footer>
         </div>

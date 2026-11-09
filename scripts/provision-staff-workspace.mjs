@@ -5,6 +5,7 @@ import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { initialRoster } from '../functions/lib/admin-roster.mjs';
 import { staffScope, staffGuid, validStaffPolicy } from '../cloud-functions/cloud/staff.mjs';
+import { liveSinRelease } from '../cloud-functions/cloud/one-time-sin.mjs';
 import { TARGET } from '../cloud-functions/cloud/gates.mjs';
 
 class OperatorError extends Error {}
@@ -28,7 +29,7 @@ async function main() {
   if (!input || Array.isArray(input) || typeof input !== 'object')
     stop('The private operator input must be a JSON object.');
   const action = process.argv[3];
-  if (action && !['--execute', '--approve-invitations', '--pause'].includes(action)) stop('Unknown operator action.');
+  if (action && !['--execute', '--approve-invitations', '--pause', '--enable-sin', '--pause-sin'].includes(action)) stop('Unknown operator action.');
   const policy = {
     version: 2, projectId: TARGET.projectId, databaseId: TARGET.databaseId,
     tenantId: input.tenantId, microsoftClientId: input.microsoftClientId,
@@ -36,16 +37,21 @@ async function main() {
     sensitiveRetrievalEnabled: false, disposalEnabled: false,
   };
   if (!validStaffPolicy(policy) || Object.keys(input).some((key) =>
-    !['tenantId', 'microsoftClientId', 'privacyApprovalReference'].includes(key))) stop('Check tenantId, microsoftClientId and the permitted operator input fields.');
+    !['tenantId', 'microsoftClientId', 'privacyApprovalReference', 'sinReleaseApprovalReference', 'sinKmsKey'].includes(key))) stop('Check tenantId, microsoftClientId and the permitted operator input fields.');
   if (action === '--approve-invitations' && !staffGuid.test(input.privacyApprovalReference || ''))
     stop('Set privacyApprovalReference to the UUID of the recorded privacy decision before attempting approval.');
+  const sinRelease = { enabled: true, approvalReference: input.sinReleaseApprovalReference, kmsKey: input.sinKmsKey };
+  if (action === '--enable-sin' && !liveSinRelease(sinRelease))
+    stop('Provide the recorded SIN release approval UUID and an approved Canadian Cloud KMS key resource.');
   if (!action) {
     console.log('Plan validated for four preapproved staff accounts. No remote calls or writes.');
     return;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   try {
-    const phrase = action === '--pause' ? 'PAUSE STAFF WORKSPACE' :
+    const phrase = action === '--enable-sin' ? 'APPROVE LIVE SIN RELEASE' :
+      action === '--pause-sin' ? 'PAUSE LIVE SIN RELEASE' :
+      action === '--pause' ? 'PAUSE STAFF WORKSPACE' :
       action === '--approve-invitations' ? 'APPROVE PRIVATE INVITATION METADATA' : 'APPROVE STAFF WORKSPACE';
     const answer = await rl.question('Confirm the independently reviewed action. Type ' + phrase + ': ');
     if (answer !== phrase) stop('Confirmation did not match. No remote write was attempted.');
@@ -72,6 +78,27 @@ async function main() {
     if (action !== '--execute') {
       if (!sameConfig || !validStaffPolicy(existing))
         stop('Staff policy is missing, paused, unsafe, or belongs to a different tenant or application.');
+      if (action === '--enable-sin' || action === '--pause-sin') {
+        const ref = db.doc('policy/sin-release');
+        const previous = (await tx.get(ref)).data();
+        if (action === '--enable-sin') {
+          if (existing.invitationImportApproved !== true || !staffGuid.test(existing.privacyApprovalReference || ''))
+            stop('Record contractor metadata approval before enabling SIN submission.');
+          if (previous && previous.kmsKey !== sinRelease.kmsKey)
+            stop('The approved key resource cannot be changed here. Rotate versions on the existing Cloud KMS key.');
+          if (previous?.enabled === true && previous.approvalReference === sinRelease.approvalReference) return;
+          tx.set(ref, sinRelease);
+        } else {
+          if (previous?.enabled !== true) return;
+          tx.update(ref, { enabled: false });
+        }
+        tx.create(db.collection('auditEvents').doc(), {
+          event: action === '--enable-sin' ? 'sin_release_enabled' : 'sin_release_paused',
+          actorUid: 'approved-deployment', at: Timestamp.now(),
+          ...(action === '--enable-sin' ? { approvalReference: sinRelease.approvalReference } : {}),
+        });
+        return;
+      }
       if (action === '--approve-invitations') {
         if (existing.invitationImportApproved === true) {
           if (existing.privacyApprovalReference !== input.privacyApprovalReference)

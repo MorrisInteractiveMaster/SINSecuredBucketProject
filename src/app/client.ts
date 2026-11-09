@@ -70,6 +70,9 @@ function describeError(error: unknown, stage?: string) {
     return 'An imported row already has an invitation. No rows were added. Edit the existing contractor instead.';
   if (stage === 'invitation-csv' && code === 'functions/invalid-argument')
     return 'Check the CSV preview for invalid columns, email addresses, statuses, or duplicate rows.';
+  if (stage === 'sin-mailbox') return 'Use your approved, verified Gmail, Outlook or Hotmail mailbox.';
+  if (stage === 'sin-unavailable') return 'This SIN is unavailable or has already been removed.';
+  if (stage === 'sin-delivery') return 'The one-time reveal was consumed, but delivery failed.';
   if (stage === 'staff-policy') return 'Staff access is paused. Contact the portal operator.';
   if (stage === 'synthetic-policy') return 'Synthetic testing is closed or has expired.';
   if (code.includes('already-exists'))
