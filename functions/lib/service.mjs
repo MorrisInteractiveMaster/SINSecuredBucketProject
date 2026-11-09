@@ -242,13 +242,14 @@ export function createService({
     async importCsv(who, csv, { approveDedicatedTesters = false, createOnly = false, renameOnly = false } = {}) {
       let rows;
       try {
-        rows = parseAllowlistCsv(csv);
+        rows = parseAllowlistCsv(csv, { preserveBlankName: approveDedicatedTesters });
       } catch (error) {
         deny('invalid-argument', error.message, 'invitation-csv');
       }
       if (approveDedicatedTesters && rows.some((row) =>
         !row.email.endsWith('@gmail.com') || !['', 'Test account', 'Test Google'].includes(row.name)
       )) deny('invalid-argument', 'Use dedicated Gmail test accounts and synthetic labels.');
+      if (approveDedicatedTesters) rows = parseAllowlistCsv(csv);
       const newIds = rows.map(() => ({
         invitationId: randomUUID(),
         reference: randomUUID(),

@@ -5,6 +5,7 @@ import React, {
   useLayoutEffect,
   useState,
 } from 'react';
+import { createPortal } from 'react-dom';
 export type IconName =
   | 'grid'
   | 'people'
@@ -157,7 +158,7 @@ export function Help({
   children,
 }: {
   text: string;
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }) {
   const id = useId(),
     [open, setOpen] = useState(false),
@@ -175,7 +176,9 @@ export function Help({
   }
   useLayoutEffect(() => {
     if (!open || !host.current || !tip.current) return;
-    const rect = host.current.getBoundingClientRect(),
+    const anchor = children ? host.current : host.current.querySelector('button');
+    if (!anchor) return;
+    const rect = anchor.getBoundingClientRect(),
       bounds = tip.current.getBoundingClientRect();
     setPosition({
       left: Math.max(
@@ -192,11 +195,11 @@ export function Help({
           : rect.top - bounds.height - 9,
       ),
     });
-  }, [open, text]);
+  }, [open, text, Boolean(children)]);
   useEffect(() => {
     if (!open) return;
     const outside = (e: PointerEvent) => {
-      if (!host.current?.contains(e.target as Node)) hide();
+      if (!host.current?.contains(e.target as Node) && !tip.current?.contains(e.target as Node)) hide();
     };
     document.addEventListener('pointerdown', outside);
     window.addEventListener('scroll', hide, true);
@@ -211,7 +214,7 @@ export function Help({
   return (
     <span
       ref={host}
-      className="help"
+      className={children ? "help" : "help help-standalone"}
       onMouseEnter={show}
       onMouseLeave={() => {
         timer.current = setTimeout(() => setOpen(false), 150);
@@ -224,31 +227,36 @@ export function Help({
         if (e.key === 'Escape') hide();
       }}
     >
-      <span className="help-target">
+      {children && <span className="help-target">
         {React.isValidElement(children)
           ? React.cloneElement(children as React.ReactElement<any>, {
               'aria-describedby': open ? id : undefined,
             })
           : children}
-      </span>
+      </span>}
       <button
+        type="button"
         className="help-touch"
         aria-label={`Help: ${text}`}
         aria-expanded={open}
+        aria-describedby={open ? id : undefined}
         onClick={show}
       >
         <Icon name="info" size={13} />
       </button>
-      {open && (
+      {open && createPortal(
         <span
           ref={tip}
           id={id}
           role="tooltip"
           className="tooltip"
           style={position}
+          onMouseEnter={show}
+          onMouseLeave={hide}
         >
           {text}
-        </span>
+        </span>,
+        host.current?.closest('dialog') ?? document.body,
       )}
     </span>
   );

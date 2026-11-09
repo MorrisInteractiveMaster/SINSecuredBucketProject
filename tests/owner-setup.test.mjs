@@ -125,3 +125,19 @@ test('Firebase Auth errors fail closed and expose only a safe response', async (
   await assert.rejects(getPortalIdentity(auth, 'private-token'), (error) =>
     error.code === 'unavailable' && !error.message.includes('UPSTREAM_PRIVATE_BODY'));
 });
+
+test('Firebase account revocation is terminal and distinct from an expired session', async () => {
+  const { getPortalIdentity } = await import('../cloud-functions/cloud/identity.mjs');
+  for (const [upstream, code, stage] of [
+    ['auth/id-token-revoked', 'permission-denied', 'firebase-revoked'],
+    ['auth/user-disabled', 'permission-denied', 'firebase-revoked'],
+    ['auth/id-token-expired', 'unauthenticated', 'firebase-session'],
+  ]) {
+    await assert.rejects(getPortalIdentity({
+      verifyIdToken: async (_, revoked) => {
+        assert.equal(revoked, true);
+        throw { code: upstream };
+      },
+    }, 'fixture-token'), (error) => error.code === code && error.stage === stage);
+  }
+});

@@ -162,7 +162,7 @@ test('export discloses scope/count and requires server generation before downloa
   });
   expect(within(dialog).getByLabelText('Export scope')).toHaveValue('filtered');
   expect(
-    within(dialog).getByText(/1 records · 10 explicit fields/),
+    within(dialog).getByText(/1 records · 9 explicit fields/),
   ).toBeInTheDocument();
   const make = vi.fn(() => 'blob:test');
   Object.defineProperty(URL, 'createObjectURL', {
@@ -357,16 +357,17 @@ test('CSV import previews explicit records before sending them to the backend', 
     screen.getByRole('button', { name: 'Add contractor', exact: true }),
   );
   const file = new File(
-    ['name,email,status\nTest account,fixture@example.org,active'],
+    ['name,email,status\n,fixture@example.org,active'],
     'approved-test.csv',
     { type: 'text/csv' },
   );
   Object.defineProperty(file, 'text', {
     value: async () =>
-      'name,email,status\nTest account,fixture@example.org,active',
+      'name,email,status\n,fixture@example.org,active',
   });
   await user.upload(screen.getByLabelText('Import approved email CSV'), file);
-  await screen.findByRole('dialog', { name: 'Review CSV import' });
+  const preview = await screen.findByRole('dialog', { name: 'Review CSV import' });
+  expect(within(preview).getByText('fixture', { exact: true })).toBeInTheDocument();
   expect(
     props.api.mock.calls.some(([name]) => name === 'portalImportAllowlist'),
   ).toBe(false);
@@ -378,7 +379,7 @@ test('CSV import previews explicit records before sending them to the backend', 
   );
   await waitFor(() =>
     expect(props.api).toHaveBeenCalledWith('portalImportAllowlist', {
-      csv: 'name,email,status\nTest account,fixture@example.org,active',
+      csv: 'name,email,status\n,fixture@example.org,active',
     }),
   );
 });
@@ -482,4 +483,70 @@ test('live staff Reveal & Copy calls the backend once, copies, and disables anot
   } finally {
     copy.mockRestore();
   }
+});
+
+test('staff can add a contractor without entering a name and tracker omits the administrator column', async () => {
+  const props = await open(fixture(), { ...context, workspace: 'staff' });
+  const user = userEvent.setup();
+  expect(screen.queryByText('Responsible administrator', { exact: true })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Columns', exact: true }));
+  const columns = screen.getByRole('dialog');
+  expect(within(columns).queryByText('Responsible administrator', { exact: true })).not.toBeInTheDocument();
+  await user.click(within(columns).getByRole('button', { name: 'Done' }));
+  await user.click(screen.getByRole('button', { name: 'Add contractor', exact: true }));
+  expect(screen.getByLabelText('Contractor name (optional)')).not.toBeRequired();
+  await user.type(screen.getByLabelText('Approved email'), 'lester@example.org');
+  await user.click(screen.getByRole('button', { name: 'Add approved identity' }));
+  await waitFor(() => expect(props.api).toHaveBeenCalledWith('portalImportAllowlist', {
+    csv: 'name,email,status\n"","lester@example.org",active',
+  }));
+});
+
+test('47 tracker rows paginate at 10, 20 and 50 while preserving the choice through sort, filter and reload', async () => {
+  const props = fixture();
+  const original = props.api.getMockImplementation()!;
+  const rows = Array.from({ length: 47 }, (_, i) => ({
+    ...row, invitationId: String(i), name: 'Contractor ' + String(i + 1).padStart(2, '0'),
+    submissionStatus: i < 21 ? 'submitted' : 'pending',
+  }));
+  props.api.mockImplementation(async (name) => {
+    const result = await original(name);
+    return name === 'portalOverview' ? { ...result, rows } as any : result;
+  });
+  render(<Dashboard {...props} api={props.api as any} context={context} />);
+  const user = userEvent.setup();
+  const selector = await screen.findByRole('combobox', { name: 'Rows per page' });
+  const table = () => screen.getByRole('table');
+  const count = () => within(table()).getAllByRole('row').length - 1;
+  expect(count()).toBe(10);
+  expect(screen.getByText('1 / 5')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Next page' }));
+  expect(screen.getByText('2 / 5')).toBeInTheDocument();
+  await user.selectOptions(selector, '20');
+  expect(count()).toBe(20);
+  expect(screen.getByText('1 / 3')).toBeInTheDocument();
+  const sort = within(table()).getByRole('button', { name: 'Name', exact: true });
+  const header = sort.closest('th')!;
+  const help = within(header).getByRole('button', { name: /Help: Sort by Name/ });
+  await user.click(help);
+  const tooltip = screen.getByRole('tooltip');
+  expect(table().contains(tooltip)).toBe(false);
+  expect(header).toHaveAttribute('aria-sort', 'ascending');
+  await user.click(sort);
+  expect(header).toHaveAttribute('aria-sort', 'descending');
+  expect(count()).toBe(20);
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Submission status filter' }), 'submitted');
+  expect(count()).toBe(20);
+  expect(screen.getByText('1 / 2')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Next page' }));
+  expect(count()).toBe(1);
+  await user.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  await waitFor(() => expect(props.api.mock.calls.filter(([name]) => name === 'portalOverview')).toHaveLength(2));
+  expect(selector).toHaveValue('20');
+  expect(count()).toBe(1);
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Submission status filter' }), 'all');
+  await user.selectOptions(selector, '50');
+  expect(count()).toBe(47);
+  expect(screen.getByText('1 / 1')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
 });

@@ -12,7 +12,6 @@ export const META_COLUMNS = [
   ['retrievalStatus', 'Retrieval'],
   ['transferStatus', 'Transfer'],
   ['disposalStatus', 'Disposal'],
-  ['responsibleAdminUid', 'Responsible administrator'],
   ['lastAction', 'Last action'],
   ['lastActionAt', 'Last action at'],
   ['auditReference', 'Audit reference'],

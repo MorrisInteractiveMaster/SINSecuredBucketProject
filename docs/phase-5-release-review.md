@@ -126,3 +126,14 @@ The existing Montreal callable and named Firestore database serve the bucket. Ke
    Type `APPROVE LIVE SIN RELEASE` after authorization is recorded. Share the portal URL manually. For the first live check, use an approved test mailbox and a non-sensitive test value matching the configured field. Verify code delivery on a custom domain, submission, clipboard behavior, and rejection of a second reveal.
 
 To halt submission and reveal, run `node scripts/provision-staff-workspace.mjs operator-input.staff.json --pause-sin`. The reveal transaction deletes the active ciphertext and wrapped key before returning the value. If delivery fails after that transaction, the value cannot be reopened. Clipboard copies are outside the portal's control. Backups and point-in-time copies may retain encrypted material for the configured retention period. Keep any restore isolated from the live callable.
+
+### Backfill contractor display names
+
+Run this once from the reviewed release checkout with the existing operator ADC for the named `mi-sin-portal` database. The first command previews counts only. The second rechecks each candidate transactionally and writes only the name field for empty names and the exact legacy placeholder `Test account`.
+
+```sh
+node scripts/backfill-contractor-names.mjs
+node scripts/backfill-contractor-names.mjs --apply
+```
+
+Reload the tracker after deployment and backfill. Existing contractor records and submissions do not need to be imported again.

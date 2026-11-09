@@ -5,7 +5,7 @@ import {
   sortRows,
   META_COLUMNS,
 } from '../../functions/lib/metadata.mjs';
-import { parseAllowlistCsv } from '../../functions/lib/csv.mjs';
+import { emailLocalPart, parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import { message } from '../app/client';
 import { bucketFieldTypes } from '../../functions/lib/bucket-field.mjs';
 import type { Api, Context, Overview, Row, Event, BucketField } from './types';
@@ -31,7 +31,6 @@ const defaults = [
   'retrievalStatus',
   'transferStatus',
   'disposalStatus',
-  'responsibleAdminUid',
 ];
 const metricList = [
   ['total', 'Total invited', 'people'],
@@ -50,11 +49,13 @@ export default function Dashboard({
   api,
   notify,
   signOut,
+  authorizationPending = false,
 }: {
   context: Context;
   api: Api;
   notify: (s: string, error?: boolean) => void;
   signOut: () => void;
+  authorizationPending?: boolean;
 }) {
   const searchRef = useRef<HTMLInputElement>(null),
     drawerRef = useRef<HTMLElement>(null);
@@ -76,7 +77,7 @@ export default function Dashboard({
     [advanced, setAdvanced] = useState(false),
     [sort, setSort] = useState('name'),
     [direction, setDirection] = useState('asc'),
-    [page, setPage] = useState(1),
+    [requestedPage, setPage] = useState(1),
     [size, setSize] = useState(10),
     [selected, setSelected] = useState<string[]>([]),
     [columns, setColumns] = useState(() => context.liveSin ? defaults.filter((field) => !['transferStatus', 'disposalStatus'].includes(field)) : defaults),
@@ -104,7 +105,7 @@ export default function Dashboard({
     [csvPreview, setCsvPreview] = useState<
       { name: string; email: string; status: string }[]
     >([]),
-    [addName, setAddName] = useState('Test account'),
+    [addName, setAddName] = useState(''),
     [addEmail, setAddEmail] = useState('');
   const permissions = context.permissions || {};
   const [bucketField, setBucketField] = useState(context.bucketField);
@@ -112,6 +113,12 @@ export default function Dashboard({
   const [revealed, setRevealed] = useState('');
   const [revealError, setRevealError] = useState('');
   const revealActive = useRef(false);
+  useEffect(() => {
+    if (authorizationPending) {
+      revealActive.current = false;
+      setRevealed('');
+    }
+  }, [authorizationPending]);
   useEffect(() => {
     const clear = () => {
       if (document.hidden) {
@@ -132,7 +139,7 @@ export default function Dashboard({
   }, [revealed]);
 
   async function revealOnce(id: string) {
-    if (busy || revealActive.current) return;
+    if (busy || authorizationPending || revealActive.current) return;
     revealActive.current = true;
     setBusy(true);
     setRevealError('');
@@ -208,6 +215,7 @@ export default function Dashboard({
     };
   }, [drawer?.invitationId]);
   async function load(initial = false) {
+    if (authorizationPending) return;
     if (initial) setLoading(true);
     setError('');
     try {
@@ -233,11 +241,12 @@ export default function Dashboard({
     () => sortRows(filterRows(data?.rows || [], filter), sort, direction),
     [data, filter, sort, direction],
   );
-  const visible = filtered.slice((page - 1) * size, page * size);
   const maxPage = Math.max(1, Math.ceil(filtered.length / size));
+  const page = Math.min(requestedPage, maxPage);
+  const visible = filtered.slice((page - 1) * size, page * size);
   useEffect(() => {
-    if (page > maxPage) setPage(maxPage);
-  }, [maxPage, page]);
+    if (requestedPage !== page) setPage(page);
+  }, [requestedPage, page]);
   function updateFilter(key: string, value: string) {
     setFilter({ ...filter, [key]: value });
     setPage(1);
@@ -485,7 +494,7 @@ export default function Dashboard({
           </span>
           <div>
             <button className="record-link" onClick={() => openRow(row)}>
-              {row.name || 'Test account'}
+              {row.name?.trim() || emailLocalPart(row.email)}
             </button>
             <small>{row.reference.slice(0, 8).toUpperCase()}</small>
           </div>
@@ -515,13 +524,6 @@ export default function Dashboard({
             <Icon name="clock" size={15} />
           )}{' '}
           {human(value)}
-        </span>
-      );
-    if (field === 'responsibleAdminUid')
-      return (
-        <span>
-          {data?.adminDirectory.find((a) => a.uid === value)?.label ||
-            'Unassigned'}
         </span>
       );
     return <span>{value ? human(String(value)) : 'Not recorded'}</span>;
@@ -648,7 +650,7 @@ export default function Dashboard({
                 icon="refresh"
                 title="Refresh statuses from the backend"
                 busy={loading}
-                disabled={busy}
+                disabled={busy || authorizationPending}
                 onClick={() => void load()}
               >
                 Refresh
@@ -663,7 +665,7 @@ export default function Dashboard({
                 }
                 disabled={!permissions.invitationManagement || busy}
                 onClick={() => {
-                  setAddName(context.workspace === 'staff' ? '' : 'Test account');
+                  setAddName('');
                   setAddEmail('');
                   setDialog({ kind: 'add' });
                 }}
@@ -1042,40 +1044,21 @@ export default function Dashboard({
                                   }
                                 />
                               </th>
-                              {columns.map((field) => (
-                                <th
-                                  key={field}
-                                  aria-sort={
-                                    sort === field
-                                      ? direction === 'asc'
-                                        ? 'ascending'
-                                        : 'descending'
-                                      : 'none'
-                                  }
-                                >
-                                  <Help
-                                    text={`Sort by ${META_COLUMNS.find(([key]) => key === field)?.[1]}. Historical missing values are not fabricated.`}
-                                  >
-                                    <button
-                                      onClick={() => {
-                                        setSort(field);
-                                        setDirection(
-                                          sort === field && direction === 'asc'
-                                            ? 'desc'
-                                            : 'asc',
-                                        );
-                                      }}
-                                    >
-                                      {
-                                        META_COLUMNS.find(
-                                          ([key]) => key === field,
-                                        )?.[1]
-                                      }
-                                      <Icon name="sort" size={12} />
+                              {columns.map((field) => {
+                                const label = META_COLUMNS.find(([key]) => key === field)?.[1];
+                                return <th key={field}
+                                  aria-sort={sort === field ? direction === 'asc' ? 'ascending' : 'descending' : undefined}>
+                                  <div className="tracker-column-heading">
+                                    <button type="button" onClick={() => {
+                                      setSort(field);
+                                      setDirection(sort === field && direction === 'asc' ? 'desc' : 'asc');
+                                    }}>
+                                      {label}<Icon name="sort" size={12} />
                                     </button>
-                                  </Help>
-                                </th>
-                              ))}
+                                    <Help text={`Sort by ${label}. Historical missing values are left blank.`} />
+                                  </div>
+                                </th>;
+                              })}
                               <th>Actions</th>
                             </tr>
                           </thead>
@@ -1173,27 +1156,23 @@ export default function Dashboard({
                             }}
                           >
                             {[10, 20, 50].map((n) => (
-                              <option key={n}>{n}</option>
+                              <option key={n} value={n}>{n}</option>
                             ))}
                           </select>
                         </label>
-                        <Button
-                          title="Previous page"
-                          disabled={page <= 1}
-                          onClick={() => setPage(page - 1)}
-                        >
+                        <button type="button" className="btn secondary"
+                          aria-label="Previous page" disabled={page <= 1}
+                          onClick={() => setPage(page - 1)}>
                           ←
-                        </Button>
+                        </button>
                         <span>
                           {page} / {maxPage}
                         </span>
-                        <Button
-                          title="Next page"
-                          disabled={page >= maxPage}
-                          onClick={() => setPage(page + 1)}
-                        >
+                        <button type="button" className="btn secondary"
+                          aria-label="Next page" disabled={page >= maxPage}
+                          onClick={() => setPage(page + 1)}>
                           →
-                        </Button>
+                        </button>
                       </div>
                     </div>
                   </section>
@@ -1464,7 +1443,7 @@ export default function Dashboard({
                 onClick={() => setDrawer(null)}
               />
             </div>
-            <h2 id="record-title">{drawer.name || 'Test account'}</h2>
+            <h2 id="record-title">{drawer.name?.trim() || emailLocalPart(drawer.email)}</h2>
             <p className="muted">{drawer.email}</p>
             <Badge value={context.liveSin && drawer.retrievalStatus === 'retrieved' ? 'Retrieved / Removed' : drawer.submissionStatus} />
             <dl className="record-fields">
@@ -1500,7 +1479,7 @@ export default function Dashboard({
             <div className="drawer-actions">
               {context.liveSin ? <Button
                 icon="lock"
-                disabled={busy || !drawer.submittedAt || drawer.retrievalStatus !== 'not_started'}
+                disabled={authorizationPending || busy || !drawer.submittedAt || drawer.retrievalStatus !== 'not_started'}
                 onClick={() => {
                   setRevealError('');
                   setRevealed('');
@@ -1765,8 +1744,8 @@ export default function Dashboard({
               >
                 {context.workspace === 'staff' ? (
                   <label className="field-label">
-                    Contractor name
-                    <input required maxLength={100} value={addName}
+                    Contractor name (optional)
+                    <input maxLength={100} value={addName}
                       onChange={(event) => setAddName(event.target.value)} />
                   </label>
                 ) : <label className="field-label">
@@ -1775,6 +1754,7 @@ export default function Dashboard({
                     value={addName}
                     onChange={(e) => setAddName(e.target.value)}
                   >
+                    <option value="">Use email name</option>
                     {['Test account', 'Test Microsoft', 'Test Google'].map(
                       (v) => (
                         <option key={v}>{v}</option>
@@ -1868,7 +1848,7 @@ export default function Dashboard({
               {revealError && <p role="alert">{revealError}</p>}
               <div className="modal-actions">
                 <Button disabled={busy} onClick={() => { setRevealed(''); setDialog(null); }}>Close</Button>
-                <Button kind="primary" disabled={busy || Boolean(revealed || revealError)}
+                <Button kind="primary" disabled={authorizationPending || busy || Boolean(revealed || revealError)}
                   onClick={() => void revealOnce(dialog.row!.invitationId)}>Reveal &amp; Copy once</Button>
               </div>
             </div>

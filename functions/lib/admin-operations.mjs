@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
+import { emailLocalPart } from './csv.mjs';
 import { deny } from './security.mjs';
 import {
   META_FIELDS,
@@ -91,7 +92,7 @@ export function createAdminOperations({ db, service, clock = Date.now, staffMeta
         last = latest.get(e.invitationId),
         expired = e.expiresAt?.toMillis?.() <= now;
       return {
-        name: text(e.name, 100),
+        name: text(e.name).trim() || emailLocalPart(e.email),
         email: text(e.email),
         invitationId: e.invitationId,
         reference: text(e.reference, 64),
@@ -310,7 +311,7 @@ export function createAdminOperations({ db, service, clock = Date.now, staffMeta
         sheet.columns.forEach((col, i) => {
           col.width = ['email'].includes(fields[i])
             ? 36
-            : ['invitationId', 'reference', 'responsibleAdminUid'].includes(
+            : ['invitationId', 'reference'].includes(
                   fields[i],
                 )
               ? 40
