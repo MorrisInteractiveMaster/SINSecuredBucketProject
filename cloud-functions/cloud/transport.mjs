@@ -8,7 +8,10 @@ export function validEnvelope(body) {
     typeof body !== 'object' ||
     Array.isArray(body) ||
     Object.keys(body).length !== 1 ||
-    !Object.hasOwn(body, 'data')
+    !Object.hasOwn(body, 'data') ||
+    !body.data ||
+    typeof body.data !== 'object' ||
+    Array.isArray(body.data)
   )
     return false;
   let count = 0;
@@ -22,8 +25,9 @@ export function validEnvelope(body) {
       return true;
     if (typeof value === 'number')
       return Number.isFinite(value) && Number.isSafeInteger(value);
-    if (!value || typeof value !== 'object' || Array.isArray(value))
-      return false;
+    if (Array.isArray(value))
+      return value.length <= 100 && value.every((v) => plain(v, depth + 1));
+    if (!value || typeof value !== 'object') return false;
     return Object.entries(value).every(
       ([key, v]) =>
         key !== '@type' &&

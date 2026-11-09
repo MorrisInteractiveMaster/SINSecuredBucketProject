@@ -1,6 +1,6 @@
 import { seedMvp } from './seed-mvp.mjs';
 import { startLocalHandlers } from './local-handlers.mjs';
-await seedMvp();
+await seedMvp({rich:true});
 const child = await startLocalHandlers();
 process.stdout.write(
   'Synthetic MVP ready. Start npm run dev in a second terminal. No cloud collection.\n',

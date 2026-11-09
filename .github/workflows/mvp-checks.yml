@@ -19,6 +19,18 @@ jobs:
           java-version: '21'
       - run: npm ci --ignore-scripts
       - run: npm run build
+      - run: npm run build:cloud-test
+        env:
+          VITE_PORTAL_MODE: cloud-test
+          VITE_REAL_COLLECTION_ENABLED: 'false'
+          VITE_FIREBASE_PROJECT_ID: gen-lang-client-0948635471
+          VITE_FIREBASE_APP_ID: 1:1025148630135:web:75e07aa9dd751cc25e0272
+          VITE_FIREBASE_AUTH_DOMAIN: gen-lang-client-0948635471.firebaseapp.com
+          # Deliberately fake PUBLIC values for build checks; cannot authorize cloud access.
+          VITE_FIREBASE_API_KEY: AIzaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+          VITE_APPCHECK_SITE_KEY: synthetic-public-key-placeholder
+          VITE_MI_TENANT_ID: 11111111-1111-1111-1111-111111111111
+      - run: node scripts/check-ui-artifact.mjs
       - run: python3 scripts/check_phase1.py
       - run: npm run test:all
       - run: npm run check:cloud

@@ -1,5 +1,7 @@
+import { approvedAdminEmail } from '../../functions/lib/admin-roster.mjs';
 import { Timestamp } from 'firebase-admin/firestore';
 import { webcrypto } from 'node:crypto';
+import { createAdminOperations } from '../../functions/lib/admin-operations.mjs';
 import { createService } from '../../functions/lib/service.mjs';
 import { normalizeEmail, parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import {
@@ -21,6 +23,12 @@ const OPERATIONS = [
   'portalListContractors',
   'portalSubmit',
   'portalRequestCorrection',
+  'portalOverview',
+  'portalActivity',
+  'portalBulkAction',
+  'portalMetadataOutput',
+  'portalOutputAck',
+  'portalWorkflowRequest',
 ];
 export function createCloudRuntime({
   db,
@@ -73,8 +81,16 @@ export function createCloudRuntime({
       (await db.doc(`testIdentities/${who.uid}`).get()).data(),
       who,
     );
-    if (who.uid === policy.adminUid) {
-      if (providerId !== 'microsoft.com') deny();
+    const adminUids = Array.isArray(policy.adminUids)
+      ? policy.adminUids
+      : [policy.adminUid];
+    if (adminUids.length > 4) deny();
+    if (adminUids.includes(who.uid)) {
+      if (
+        providerId !== 'microsoft.com' ||
+        (!emulator && !approvedAdminEmail(who.email))
+      )
+        deny();
       who.organization = await verifyMicrosoft(request.data.microsoftIdToken, {
         tenantId: policy.tenantId,
         clientId: policy.microsoftClientId,
@@ -117,6 +133,16 @@ export function createCloudRuntime({
     });
     const data = request.data.payload ?? {},
       op = request.data.operation;
+    const operations = createAdminOperations({ db, service, clock });
+    const administrative = {
+      portalOverview: 'overview',
+      portalActivity: 'activity',
+      portalBulkAction: 'bulk',
+      portalMetadataOutput: 'output',
+      portalOutputAck: 'acknowledge',
+      portalWorkflowRequest: 'workflow',
+    };
+    if (administrative[op]) return operations[administrative[op]](who, data);
     if (op === 'portalContext') {
       exactKeys(data, []);
       return service.context(who);
@@ -126,6 +152,7 @@ export function createCloudRuntime({
       return service.list(who);
     }
     if (op === 'portalImportAllowlist') {
+      await service.authorize(who, 'invitationManagement');
       exactKeys(data, ['csv']);
       let rows;
       try {
@@ -136,13 +163,13 @@ export function createCloudRuntime({
       const testers = await db
         .collection('testIdentities')
         .where('active', '==', true)
-        .limit(6)
+        .limit(10)
         .get();
       const emails = new Set(
         testers.docs
           .filter(
             (d) =>
-              d.id !== policy.adminUid &&
+              !adminUids.includes(d.id) &&
               d.data().purpose === 'dedicated-synthetic-test' &&
               d.data().ownershipVerified === true,
           )

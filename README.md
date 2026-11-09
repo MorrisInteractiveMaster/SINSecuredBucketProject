@@ -1,5 +1,7 @@
 # Morris Interactive | Secure SIN Collection Portal
 
+**Phase 3 interactive synthetic workspace — review only; no merge or deployment.** The redesigned contractor flow and dashboard include backend metrics, filters, metadata copy, audited Excel output and blocked Burn/retrieval review. Start with the [Phase 3 review and private administrator provisioning process](docs/phase-3-review.md) and [tests/screenshots](docs/phase-3-validation.md). Real SIN collection, sensitive retrieval and disposal remain disabled. The live synthetic application is unchanged. Earlier phase records below are historical.
+
 **Phase 2.5 synthetic cloud test package is ready for review. Nothing has been deployed.** Follow the [beginner Cloud Shell launch/rollback guide](docs/cloud-test-launch.md) and [cost/IAM/dependency review](docs/cloud-test-review.md), plus the [42-test validation record](docs/phase-2.5-validation.md). The owner confirms existing portal resources/providers; cloud launch still requires actual region/IAM/billing/App Check checks and one explicitly approved administrator. Real SIN collection, reveal and disposal stay disabled. Earlier Phase 1/2 records below are retained as history.
 
 

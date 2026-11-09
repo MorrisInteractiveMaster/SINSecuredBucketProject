@@ -15,11 +15,6 @@ import {
   signOut,
 } from 'firebase/auth';
 import {
-  initializeFirestore,
-  memoryLocalCache,
-  connectFirestoreEmulator,
-} from 'firebase/firestore';
-import {
   getFunctions,
   connectFunctionsEmulator,
   httpsCallable,
@@ -37,18 +32,36 @@ export const auth = initializeAuth(app, {
   persistence: inMemoryPersistence,
   popupRedirectResolver: browserPopupRedirectResolver,
 });
-export const db = initializeFirestore(
-  app,
-  { localCache: memoryLocalCache() },
-  'mi-sin-portal',
-);
+let database: Promise<import('firebase/firestore').Firestore> | undefined;
+export async function getPortalDatabase() {
+  return (database ??= (async () => {
+    const { initializeFirestore, memoryLocalCache, connectFirestoreEmulator } =
+      await import('firebase/firestore');
+    const db = initializeFirestore(
+      app,
+      { localCache: memoryLocalCache() },
+      'mi-sin-portal',
+    );
+    if (local) connectFirestoreEmulator(db, '127.0.0.1', 8080);
+    return db;
+  })());
+}
 const functions = getFunctions(app, 'northamerica-northeast1');
 if (local) {
-  connectAuthEmulator(auth, 'http://127.0.0.1:9099', {
-    disableWarnings: false,
-  });
-  connectFirestoreEmulator(db, '127.0.0.1', 8080);
-  connectFunctionsEmulator(functions, '127.0.0.1', 5001);
+  const proxied =
+    import.meta.env.DEV && import.meta.env.VITE_LOCAL_PROXY === '1';
+  connectAuthEmulator(
+    auth,
+    proxied ? window.location.origin : 'http://127.0.0.1:9099',
+    {
+      disableWarnings: false,
+    },
+  );
+  connectFunctionsEmulator(
+    functions,
+    proxied ? window.location.hostname : '127.0.0.1',
+    proxied ? Number(window.location.port) : 5001,
+  );
 }
 let microsoftIdToken: string | undefined;
 export async function signIn(

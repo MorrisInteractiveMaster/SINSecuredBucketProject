@@ -4,6 +4,7 @@ import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { randomBytes } from 'node:crypto';
 import nodemailer from 'nodemailer';
+import { createAdminOperations } from './lib/admin-operations.mjs';
 import { createService } from './lib/service.mjs';
 import {
   DATABASE_ID,
@@ -69,6 +70,7 @@ async function sendCode({ uid, to, code }) {
   });
 }
 const service = createService({ db, pepper, tenantId, sendCode });
+const operations = createAdminOperations({ db, service });
 async function identity(request) {
   const header = request.rawRequest?.headers?.authorization;
   if (
@@ -193,3 +195,20 @@ export const portalTestMailbox = callable(async (who) => {
   if (!mail || mail.to !== who.email) deny();
   return { code: mail.code, synthetic: true };
 });
+
+export const portalOverview = callable((who) => operations.overview(who));
+export const portalActivity = callable((who, data) =>
+  operations.activity(who, data),
+);
+export const portalBulkAction = callable((who, data) =>
+  operations.bulk(who, data),
+);
+export const portalMetadataOutput = callable((who, data) =>
+  operations.output(who, data),
+);
+export const portalOutputAck = callable((who, data) =>
+  operations.acknowledge(who, data),
+);
+export const portalWorkflowRequest = callable((who, data) =>
+  operations.workflow(who, data),
+);

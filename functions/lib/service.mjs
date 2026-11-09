@@ -84,6 +84,10 @@ export function createService({
       proofExpiresAt: Timestamp.fromMillis(clock() + 15 * 60000),
     });
   return {
+    authorizeTx: admin,
+    async authorize(who, permission) {
+      return db.runTransaction((tx) => admin(tx, who, permission));
+    },
     async context(who) {
       // Admin check does not infer privileges from email, provider alone or a domain.
       const role = await db.runTransaction(async (tx) => {
@@ -106,11 +110,17 @@ export function createService({
       if (manageRole)
         return {
           kind: 'admin',
+          uid: who.uid,
+          displayLabel: manageRole.displayLabel || 'MI administrator',
           permissions: {
             invitationManagement: manageRole.invitationManagement === true,
             statusViewing: manageRole.statusViewing === true,
             sensitiveRetrieval: manageRole.sensitiveRetrieval === true,
             correctionManagement: manageRole.correctionManagement === true,
+            metadataCopy: manageRole.metadataCopy === true,
+            metadataExport: manageRole.metadataExport === true,
+            auditViewing: manageRole.auditViewing === true,
+            workflowManagement: manageRole.workflowManagement === true,
           },
         };
       return db.runTransaction(async (tx) => {
@@ -129,6 +139,17 @@ export function createService({
             session.revision === a.entry.revision &&
             session.ownershipVerified === true &&
             ms(session.proofExpiresAt) > clock());
+        if (proof && (a.entry.lastAuthenticatedAt || 0) < who.authTime) {
+          tx.update(a.r, {
+            firstSignInAt:
+              a.entry.firstSignInAt || Timestamp.fromMillis(clock()),
+            lastSignInAt: Timestamp.fromMillis(clock()),
+            lastAuthenticatedAt: who.authTime,
+            authenticationProvider: who.providerId,
+            lastSignInUid: who.uid,
+          });
+          audit(tx, who, 'contractor_signed_in', a.entry.invitationId);
+        }
         if (proof && who.emailTrusted === true) publishSession(tx, who, a);
         return {
           kind: 'contractor',
@@ -242,8 +263,33 @@ export function createService({
             revision: (old?.revision || 0) + 1,
             expiresAt:
               old?.expiresAt || Timestamp.fromMillis(clock() + 72 * 3600000),
+            createdAt: old
+              ? old.createdAt || null
+              : Timestamp.fromMillis(clock()),
+            responsibleAdminUid: old?.responsibleAdminUid || who.uid,
+            ...(old
+              ? {
+                  firstSignInAt: old.firstSignInAt || null,
+                  lastSignInAt: old.lastSignInAt || null,
+                  lastAuthenticatedAt: old.lastAuthenticatedAt || 0,
+                  authenticationProvider: old.authenticationProvider || null,
+                  lastSignInUid: old.lastSignInUid || null,
+                }
+              : {}),
             updatedAt: Timestamp.fromMillis(clock()),
           });
+          audit(
+            tx,
+            who,
+            old
+              ? row.status === 'revoked'
+                ? 'invitation_revoked'
+                : row.status === 'removed'
+                  ? 'invitation_removed'
+                  : 'invitation_updated'
+              : 'invitation_created',
+            old?.invitationId || newIds[i].invitationId,
+          );
         });
         audit(tx, who, 'allowlist_imported');
       });

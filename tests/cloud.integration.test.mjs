@@ -374,3 +374,96 @@ test('revocation, wrong email/provider binding and test budget are enforced befo
     'resource-exhausted',
   );
 });
+
+test('multiple approved Microsoft UID bindings remain independent and role revocation is immediate', async () => {
+  await db.doc('testLimits/global').delete();
+  const primary = request(adminToken).auth.uid,
+    objectId = '22222222-2222-2222-2222-222222222222';
+  const secondToken = await token(
+      'microsoft.com',
+      'second-staff@example.org',
+      objectId,
+    ),
+    second = request(secondToken).auth.uid;
+  await db
+    .doc(`testIdentities/${second}`)
+    .set({
+      active: true,
+      email: 'second-staff@example.org',
+      purpose: 'dedicated-synthetic-test',
+      ownershipVerified: true,
+      providerIds: ['microsoft.com'],
+      providerUids: { 'microsoft.com': objectId },
+    });
+  await db.doc('policy/cloud-test').update({ adminUids: [primary, second] });
+  await db
+    .doc(`roles/${second}`)
+    .set({
+      active: true,
+      tenantId: guid,
+      objectId,
+      statusViewing: true,
+      invitationManagement: false,
+      metadataExport: false,
+      sensitiveRetrieval: false,
+    });
+  const dispatch = createCloudRuntime({
+    db,
+    auth,
+    projectId: 'demo-mi-sin-portal',
+    emulator: true,
+    verifyMicrosoft: async (assertion) => {
+      if (assertion !== 'signed-second') throw Error('Rejected');
+      return { member: true, tenantId: guid, objectId };
+    },
+  });
+  assert.equal(
+    (
+      await dispatch(
+        request(
+          secondToken,
+          'portalContext',
+          {},
+          { microsoftIdToken: 'signed-second' },
+        ),
+      )
+    ).kind,
+    'admin',
+  );
+  await deny(
+    dispatch(
+      request(
+        secondToken,
+        'portalImportAllowlist',
+        { csv: 'name,email,status\nTest,test@example.org,active' },
+        { microsoftIdToken: 'signed-second' },
+      ),
+    ),
+    'permission-denied',
+  );
+  await deny(
+    dispatch(
+      request(
+        secondToken,
+        'portalMetadataOutput',
+        { kind: 'xlsx', scope: 'all', fields: ['email'] },
+        { microsoftIdToken: 'signed-second' },
+      ),
+    ),
+    'permission-denied',
+  );
+  await db.doc(`roles/${second}`).update({ active: false });
+  await deny(
+    dispatch(
+      request(
+        secondToken,
+        'portalOverview',
+        {},
+        { microsoftIdToken: 'signed-second' },
+      ),
+    ),
+    'permission-denied',
+  );
+  assert.ok((await db.doc(`roles/${primary}`).get()).data().active);
+  await db.doc('policy/cloud-test').update({ adminUids: [primary] });
+});

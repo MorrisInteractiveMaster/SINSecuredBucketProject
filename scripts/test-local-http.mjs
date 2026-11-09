@@ -10,6 +10,7 @@ try {
       '--test-concurrency=1',
       'tests/mvp.integration.test.mjs',
       'tests/mvp.security.test.mjs',
+      'tests/admin.integration.test.mjs',
     ],
     {
       stdio: 'inherit',

@@ -372,8 +372,8 @@ test('Firebase httpsCallable client interoperates with the cloud JSON success an
 test('Enterprise App Check uses the public site key with CSP coverage and no shared enforcement configuration', () => {
   const client = readFileSync('src/app/firebase.ts', 'utf8');
   assert.match(
-    client,
-    /new ReCaptchaEnterpriseProvider\(config.appCheckSiteKey\)/,
+    client.replace(/\s+/g, ''),
+    /new\s*ReCaptchaEnterpriseProvider\(config.appCheckSiteKey\)/,
   );
   assert.equal(client.includes('ReCaptchaV3Provider'), false);
   const config = json('firebase.mi-sin-portal.cloud-test.json');
@@ -404,4 +404,57 @@ test('Enterprise App Check uses the public site key with CSP coverage and no sha
   assert.match(backend, /getAppCheck\(app\)\.verifyToken\(appToken\)/);
   const gate = readFileSync('cloud-functions/cloud/runtime.mjs', 'utf8');
   assert.match(gate, /request.app\?\.appId !== TARGET.appId/);
+});
+
+test('metadata transport accepts bounded field/selection arrays but not abusive nesting or typed wrappers', () => {
+  assert.equal(
+    validEnvelope({
+      data: {
+        operation: 'portalMetadataOutput',
+        payload: {
+          fields: ['name', 'email'],
+          ids: ['11111111-1111-1111-1111-111111111111'],
+        },
+      },
+    }),
+    true,
+  );
+  assert.equal(
+    validEnvelope({ data: { payload: { ids: Array(101).fill('id') } } }),
+    false,
+  );
+  assert.equal(
+    validEnvelope({ data: { payload: { ids: [{ '@type': 'unsupported' }] } } }),
+    false,
+  );
+  assert.equal(
+    validEnvelope({
+      data: { payload: { a: { b: { c: { d: { e: { f: 'too deep' } } } } } } },
+    }),
+    false,
+  );
+});
+test('Phase 3 preserves isolation, server-only workbook generation and disabled sensitive workflows', () => {
+  const client = readFileSync('src/app/firebase.ts', 'utf8');
+  assert.match(
+    client.replace(/\s+/g, ''),
+    /initializeFirestore\(app,\{localCache:memoryLocalCache\(\)\},'mi-sin-portal',?\)/,
+  );
+  const dashboard = readFileSync('src/ui/Dashboard.tsx', 'utf8');
+  assert.equal(dashboard.includes("import('exceljs-community')"), false);
+  const ops = readFileSync('functions/lib/admin-operations.mjs', 'utf8');
+  assert.match(
+    ops.replace(/\s+/g, ''),
+    /awaitservice.authorize\(who,data.kind==='copy'\?'metadataCopy':'metadataExport',?\)/,
+  );
+  assert.equal(ops.includes('.delete('), false);
+  assert.match(ops, /outcome:\s*'blocked'/);
+  const provision = readFileSync('scripts/phase3-admin.mjs', 'utf8');
+  assert.match(provision, /sensitiveRetrieval:\s*false/);
+  assert.equal(provision.includes('setCustomUserClaims'), false);
+  const rules = readFileSync(
+    'firestore.mi-sin-portal.cloud-test.rules',
+    'utf8',
+  );
+  assert.match(rules, /allow read, write: if false/);
 });
