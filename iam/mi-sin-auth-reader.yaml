@@ -1,0 +1,5 @@
+title: MI SIN portal Auth identity reader
+description: Read-only identity and revocation checks; no user creation, modification or deletion.
+stage: GA
+includedPermissions:
+  - firebaseauth.users.get

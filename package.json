@@ -1,0 +1,63 @@
+{
+  "name": "mi-secure-sin-portal-mvp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests/routing.test.mjs",
+    "test:rules": "node --test --test-concurrency=1 tests/isolation.emulator.test.mjs",
+    "test:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.emulator.json --only firestore 'npm run test:rules'",
+    "test:closed": "MI_TEST_CLOSED=1 node --test tests/isolation.emulator.test.mjs",
+    "test:emulators:closed": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.emulator-closed.json --only firestore 'npm run test:closed'",
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc --noEmit && vite build",
+    "test:mvp": "node --test --test-concurrency=1 tests/mvp*.test.mjs",
+    "test:mvp:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore,functions 'MVP_HTTP_URL=http://127.0.0.1:5001 npm run test:mvp'",
+    "test:mvp:local-http": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore 'node scripts/test-local-http.mjs'",
+    "dev:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.mvp.emulator.json --only auth,firestore 'node scripts/dev-local-mvp.mjs'",
+    "build:cloud-test": "tsc --noEmit && node scripts/build-cloud-test.mjs",
+    "prepare:cloud": "node scripts/prepare-cloud.mjs",
+    "check:cloud": "node scripts/check-cloud-release.mjs",
+    "test:release": "node --test tests/cloud-release.test.mjs",
+    "test:cloud:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.cloud-test.emulator.json --only auth,firestore 'node --test --test-concurrency=1 tests/cloud.integration.test.mjs'",
+    "test:all": "npm test && npm run test:release && npm run test:emulators && npm run test:emulators:closed && npm run test:mvp:local-http && npm run test:cloud:emulators && npm run test:ui && npm run test:phase4",
+    "test:ui": "vitest run",
+    "test:phase4": "node --test --test-timeout=25000 tests/owner-setup.test.mjs tests/production-candidate.test.mjs tests/phase5.test.mjs"
+  },
+  "dependencies": {
+    "exceljs-community": "5.2.1",
+    "firebase": "13.2.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "6.0.0",
+    "@google-cloud/functions-framework": "5.0.5",
+    "@tailwindcss/vite": "4.3.4",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.8",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.2.1",
+    "axe-core": "4.14.0",
+    "firebase-admin": "14.5.0",
+    "jsdom": "31.0.0",
+    "tailwindcss": "4.3.4",
+    "typescript": "7.0.2",
+    "vite": "8.3.6",
+    "vitest": "5.1.0"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "@grpc/grpc-js": "1.14.7",
+    "readdir-glob": {
+      "minimatch": "11.0.1"
+    }
+  },
+  "workspaces": [
+    "functions"
+  ]
+}
