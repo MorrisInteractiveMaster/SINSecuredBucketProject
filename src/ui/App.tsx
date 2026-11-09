@@ -167,7 +167,7 @@ export default function App() {
             <section className="welcome-copy">
               <div className="eyebrow">
                 <span className="little-rule" />
-                PEOPLE FIRST. PRIVACY ALWAYS.
+                It starts with people.
               </div>
               <h1>
                 A private place
@@ -365,7 +365,7 @@ export default function App() {
           </main>
           <footer className="public-footer">
             <span>© {new Date().getFullYear()} Morris Interactive</span>
-            <span>It starts with people. It continues with trust.</span>
+            <span>It starts with people.</span>
             <span>
               <Icon name="lock" size={13} />
               Synthetic testing only
