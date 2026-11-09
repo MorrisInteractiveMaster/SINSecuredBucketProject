@@ -5,7 +5,7 @@ import {
   sortRows,
   META_COLUMNS,
 } from '../../functions/lib/metadata.mjs';
-import { parseAllowlistCsv } from '../../functions/lib/csv.mjs';
+import { emailLocalPart, parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import { message } from '../app/client';
 import { bucketFieldTypes } from '../../functions/lib/bucket-field.mjs';
 import type { Api, Context, Overview, Row, Event, BucketField } from './types';
@@ -31,7 +31,6 @@ const defaults = [
   'retrievalStatus',
   'transferStatus',
   'disposalStatus',
-  'responsibleAdminUid',
 ];
 const metricList = [
   ['total', 'Total invited', 'people'],
@@ -104,7 +103,7 @@ export default function Dashboard({
     [csvPreview, setCsvPreview] = useState<
       { name: string; email: string; status: string }[]
     >([]),
-    [addName, setAddName] = useState('Test account'),
+    [addName, setAddName] = useState(''),
     [addEmail, setAddEmail] = useState('');
   const permissions = context.permissions || {};
   const [bucketField, setBucketField] = useState(context.bucketField);
@@ -485,7 +484,7 @@ export default function Dashboard({
           </span>
           <div>
             <button className="record-link" onClick={() => openRow(row)}>
-              {row.name || 'Test account'}
+              {row.name?.trim() || emailLocalPart(row.email)}
             </button>
             <small>{row.reference.slice(0, 8).toUpperCase()}</small>
           </div>
@@ -515,13 +514,6 @@ export default function Dashboard({
             <Icon name="clock" size={15} />
           )}{' '}
           {human(value)}
-        </span>
-      );
-    if (field === 'responsibleAdminUid')
-      return (
-        <span>
-          {data?.adminDirectory.find((a) => a.uid === value)?.label ||
-            'Unassigned'}
         </span>
       );
     return <span>{value ? human(String(value)) : 'Not recorded'}</span>;
@@ -663,7 +655,7 @@ export default function Dashboard({
                 }
                 disabled={!permissions.invitationManagement || busy}
                 onClick={() => {
-                  setAddName(context.workspace === 'staff' ? '' : 'Test account');
+                  setAddName('');
                   setAddEmail('');
                   setDialog({ kind: 'add' });
                 }}
@@ -1464,7 +1456,7 @@ export default function Dashboard({
                 onClick={() => setDrawer(null)}
               />
             </div>
-            <h2 id="record-title">{drawer.name || 'Test account'}</h2>
+            <h2 id="record-title">{drawer.name?.trim() || emailLocalPart(drawer.email)}</h2>
             <p className="muted">{drawer.email}</p>
             <Badge value={context.liveSin && drawer.retrievalStatus === 'retrieved' ? 'Retrieved / Removed' : drawer.submissionStatus} />
             <dl className="record-fields">
@@ -1765,8 +1757,8 @@ export default function Dashboard({
               >
                 {context.workspace === 'staff' ? (
                   <label className="field-label">
-                    Contractor name
-                    <input required maxLength={100} value={addName}
+                    Contractor name (optional)
+                    <input maxLength={100} value={addName}
                       onChange={(event) => setAddName(event.target.value)} />
                   </label>
                 ) : <label className="field-label">
@@ -1775,6 +1767,7 @@ export default function Dashboard({
                     value={addName}
                     onChange={(e) => setAddName(e.target.value)}
                   >
+                    <option value="">Use email name</option>
                     {['Test account', 'Test Microsoft', 'Test Google'].map(
                       (v) => (
                         <option key={v}>{v}</option>

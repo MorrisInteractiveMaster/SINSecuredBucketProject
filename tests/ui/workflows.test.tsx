@@ -162,7 +162,7 @@ test('export discloses scope/count and requires server generation before downloa
   });
   expect(within(dialog).getByLabelText('Export scope')).toHaveValue('filtered');
   expect(
-    within(dialog).getByText(/1 records · 10 explicit fields/),
+    within(dialog).getByText(/1 records · 9 explicit fields/),
   ).toBeInTheDocument();
   const make = vi.fn(() => 'blob:test');
   Object.defineProperty(URL, 'createObjectURL', {
@@ -357,16 +357,17 @@ test('CSV import previews explicit records before sending them to the backend', 
     screen.getByRole('button', { name: 'Add contractor', exact: true }),
   );
   const file = new File(
-    ['name,email,status\nTest account,fixture@example.org,active'],
+    ['name,email,status\n,fixture@example.org,active'],
     'approved-test.csv',
     { type: 'text/csv' },
   );
   Object.defineProperty(file, 'text', {
     value: async () =>
-      'name,email,status\nTest account,fixture@example.org,active',
+      'name,email,status\n,fixture@example.org,active',
   });
   await user.upload(screen.getByLabelText('Import approved email CSV'), file);
-  await screen.findByRole('dialog', { name: 'Review CSV import' });
+  const preview = await screen.findByRole('dialog', { name: 'Review CSV import' });
+  expect(within(preview).getByText('fixture', { exact: true })).toBeInTheDocument();
   expect(
     props.api.mock.calls.some(([name]) => name === 'portalImportAllowlist'),
   ).toBe(false);
@@ -378,7 +379,7 @@ test('CSV import previews explicit records before sending them to the backend', 
   );
   await waitFor(() =>
     expect(props.api).toHaveBeenCalledWith('portalImportAllowlist', {
-      csv: 'name,email,status\nTest account,fixture@example.org,active',
+      csv: 'name,email,status\n,fixture@example.org,active',
     }),
   );
 });
@@ -482,4 +483,21 @@ test('live staff Reveal & Copy calls the backend once, copies, and disables anot
   } finally {
     copy.mockRestore();
   }
+});
+
+test('staff can add a contractor without entering a name and tracker omits the administrator column', async () => {
+  const props = await open(fixture(), { ...context, workspace: 'staff' });
+  const user = userEvent.setup();
+  expect(screen.queryByText('Responsible administrator', { exact: true })).not.toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Columns', exact: true }));
+  const columns = screen.getByRole('dialog');
+  expect(within(columns).queryByText('Responsible administrator', { exact: true })).not.toBeInTheDocument();
+  await user.click(within(columns).getByRole('button', { name: 'Done' }));
+  await user.click(screen.getByRole('button', { name: 'Add contractor', exact: true }));
+  expect(screen.getByLabelText('Contractor name (optional)')).not.toBeRequired();
+  await user.type(screen.getByLabelText('Approved email'), 'lester@example.org');
+  await user.click(screen.getByRole('button', { name: 'Add approved identity' }));
+  await waitFor(() => expect(props.api).toHaveBeenCalledWith('portalImportAllowlist', {
+    csv: 'name,email,status\n"","lester@example.org",active',
+  }));
 });

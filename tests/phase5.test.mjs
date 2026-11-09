@@ -85,6 +85,9 @@ test('invitation import requires a recorded approval, rejects duplicates and pre
     (error) => error.code === 'failed-precondition');
   rows.set('staffWorkspace/v1/policy/access', { ...policy, invitationImportApproved: true, privacyApprovalReference: objectId });
   assert.deepEqual(await staff.dispatch(bound, 'portalImportAllowlist', { csv }), { imported: 1 });
+  assert.equal(rows.get(path).name, 'Fictional Person');
+  await staff.dispatch(bound, 'portalImportAllowlist', { csv: 'name,email,status\n   ,Les.Ter+work@example.org,active' });
+  assert.equal(rows.get('staffWorkspace/v1/allowlist/' + emailKey('les.ter+work@example.org')).name, 'Les.Ter+work');
   const invitationId = rows.get(path).invitationId;
   await assert.rejects(staff.dispatch(bound, 'portalImportAllowlist', { csv }),
     (error) => error.code === 'already-exists');
@@ -195,4 +198,70 @@ test('MFA verifier requires fresh second-factor evidence, not a newly issued tok
   token.auth_time = 999;
   delete token.firebase.second_factor_identifier;
   await assert.rejects(mfa('fictional-token', who.uid));
+});
+
+test('backfill previews and updates only placeholder and empty contractor names', async () => {
+  const { backfillContractorNames } = await import('../scripts/backfill-contractor-names.mjs');
+  const records = [
+    { name: 'Test account', email: 'lester@example.org', invitationId: 'keep' },
+    { name: '  ', email: 'Case+tag@example.org' },
+    { name: null, email: 'null-name@example.org' },
+    { email: 'missing-name@example.org' },
+    { name: 'Original Name', email: 'original@example.org' },
+    { name: 'Test account', email: 'bad-email' },
+    { name: '', email: 'concurrent@example.org' },
+  ];
+  const docs = records.map((row, ref) => ({ ref, data: () => ({ ...row }) }));
+  const db = {
+    collection: (path) => {
+      assert.ok(['allowlist', 'staffWorkspace/v1/allowlist'].includes(path));
+      return { orderBy: () => ({ limit: () => ({ get: async () => {
+        const selected = path === 'allowlist' ? docs.slice(5) : docs.slice(0, 5);
+        return { docs: selected, size: selected.length, empty: false };
+      } }) }) };
+    },
+    runTransaction: (fn) => fn({
+      get: async (ref) => ({ data: () => ref === 6 ? { ...records[ref], name: 'Concurrent edit' } : records[ref] }),
+      update: (ref, patch) => Object.assign(records[ref], patch),
+    }),
+  };
+  assert.deepEqual(await backfillContractorNames(db, false), { scanned: 7, candidates: 5, updated: 0 });
+  assert.equal(records[0].name, 'Test account');
+  assert.deepEqual(await backfillContractorNames(db, true), { scanned: 7, candidates: 5, updated: 4 });
+  assert.deepEqual(records.map(({ name }) => name),
+    ['lester', 'Case+tag', 'null-name', 'missing-name', 'Original Name', 'Test account', '']);
+  assert.equal(records[0].invitationId, 'keep');
+  assert.deepEqual(await backfillContractorNames(db, true), { scanned: 7, candidates: 1, updated: 0 });
+});
+
+test('tracker copy and Excel exports omit responsible administrator even when it exists in storage', async () => {
+  const { createAdminOperations } = await import('../functions/lib/admin-operations.mjs');
+  const { Workbook } = await import('exceljs-community');
+  const record = { name: 'Lester', email: 'lester@example.org', invitationId: objectId,
+    responsibleAdminUid: 'staff-id-should-not-leave' };
+  const db = {
+    collection: (name) => ({
+      orderBy() { return this; },
+      limit() { return this; },
+      async get() {
+        const docs = name === 'allowlist' ? [{ data: () => record }] : [];
+        return { docs, size: docs.length };
+      },
+      doc: () => ({ id: 'audit', create: async () => {} }),
+    }),
+    doc: () => ({ create: async () => {} }),
+    getAll: async () => [{ data: () => undefined }],
+  };
+  const operations = createAdminOperations({ db, service: { authorize: async () => {} } });
+  const copy = await operations.output(who, { kind: 'copy', scope: 'all' });
+  assert.doesNotMatch(copy.text, /Responsible administrator|staff-id-should-not-leave/);
+  assert.match(copy.text, /Lester/);
+  const result = await operations.output(who, { kind: 'xlsx', scope: 'all' });
+  const workbook = new Workbook();
+  await workbook.xlsx.load(Buffer.from(result.base64, 'base64'));
+  const sheet = workbook.worksheets[0];
+  assert.doesNotMatch(JSON.stringify(sheet.getRows(3, 2).map((row) => row.values)),
+    /Responsible administrator|staff-id-should-not-leave/);
+  await assert.rejects(operations.output(who, { kind: 'xlsx', scope: 'all', fields: ['responsibleAdminUid'] }),
+    (error) => error.code === 'permission-denied');
 });

@@ -11,7 +11,12 @@ export function normalizeEmail(value) {
     throw new Error('Invalid email');
   return email; // Never remove dots, plus addressing or infer aliases.
 }
-export function parseAllowlistCsv(text) {
+export function emailLocalPart(email) {
+  const value = typeof email === 'string' ? email.trim() : '';
+  const at = value.indexOf('@');
+  return at > 0 ? value.slice(0, at) : '';
+}
+export function parseAllowlistCsv(text, { preserveBlankName = false } = {}) {
   if (typeof text !== 'string' || new TextEncoder().encode(text).length > 65536)
     throw new Error('CSV limit is 64 KiB');
   text = text.replace(/^\uFEFF/, '');
@@ -58,21 +63,21 @@ export function parseAllowlistCsv(text) {
   }
   if (quoted) throw new Error('Unclosed quote');
   if (value || row.length || ended) line();
-  if (
-    !rows.length ||
-    rows[0].map((x) => x.trim().toLowerCase()).join(',') !== 'name,email,status'
-  )
-    throw new Error('Required header: name,email,status');
+  const header = rows[0]?.map((x) => x.trim().toLowerCase()).join(',');
+  const hasName = header === 'name,email,status';
+  if (!hasName && header !== 'email,status')
+    throw new Error('Required header: name,email,status or email,status');
   if (rows.length < 2 || rows.length > 101)
     throw new Error('Import 1–100 rows');
   const seen = new Set();
   return rows.slice(1).map((r, index) => {
     const rowNumber = index + 2;
-    if (r.length !== 3) throw new Error('Row ' + rowNumber + ' needs three columns');
-    const name = r[0].trim(), status = r[2].trim().toLowerCase();
+    if (r.length !== (hasName ? 3 : 2)) throw new Error('Row ' + rowNumber + ' does not match the header');
+    const [rawName, rawEmail, rawStatus] = hasName ? r : ['', ...r];
+    const name = rawName.trim(), status = rawStatus.trim().toLowerCase();
     let email;
     try {
-      email = normalizeEmail(r[1]);
+      email = normalizeEmail(rawEmail);
     } catch {
       throw new Error('Row ' + rowNumber + ' has an invalid email');
     }
@@ -84,6 +89,6 @@ export function parseAllowlistCsv(text) {
       throw new Error('Row ' + rowNumber + ' has an invalid name or status');
     if (seen.has(email)) throw new Error('Duplicate email at row ' + rowNumber);
     seen.add(email);
-    return { name, email, status };
+    return { name: name || (preserveBlankName ? '' : emailLocalPart(rawEmail)), email, status };
   });
 }

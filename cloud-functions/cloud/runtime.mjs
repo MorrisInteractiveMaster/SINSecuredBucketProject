@@ -172,7 +172,7 @@ export function createCloudRuntime({
       exactKeys(data, ['csv']);
       let rows;
       try {
-        rows = parseAllowlistCsv(data.csv);
+        rows = parseAllowlistCsv(data.csv, { preserveBlankName: true });
       } catch {
         deny('invalid-argument', 'Check the synthetic test CSV.');
       }
