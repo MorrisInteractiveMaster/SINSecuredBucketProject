@@ -9,12 +9,14 @@ import {
   message,
 } from '../app/client';
 import type { Context } from './types';
+import { OwnerSetup } from './OwnerSetup';
 import { Button, Icon } from './components';
 const Dashboard = lazy(() => import('./Dashboard'));
 const Contractor = lazy(() => import('./Contractor'));
 export default function App() {
   const [context, setContext] = useState<Context | null>(null),
     [step, setStep] = useState('welcome'),
+    [ownerSetup, setOwnerSetup] = useState<'activate' | 'window' | null>(null),
     [staff, setStaff] = useState(false),
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
@@ -27,6 +29,7 @@ export default function App() {
     await logout();
     setContext(null);
     setStep('welcome');
+    setOwnerSetup(null);
     setError('');
   }
   async function signIn(
@@ -41,9 +44,33 @@ export default function App() {
       else await login(provider, staff);
       providerAuthenticated = true;
       const c = await api<Context>('portalContext');
+      if (!isLocal && staff && c.kind === 'admin' && !c.permissions?.administratorManagement) {
+        const setup = await api('portalOwnerSetupStatus').catch(() => null);
+        if (setup) {
+          setOwnerSetup('activate');
+          return;
+        }
+      }
       setContext(c);
       setStep('authorized');
     } catch (e) {
+      const code = (e as { code?: string })?.code;
+      if (!isLocal && providerAuthenticated && staff &&
+          ['functions/failed-precondition', 'functions/permission-denied'].includes(code || '')) {
+        try {
+          await api('portalOwnerWindow');
+          setOwnerSetup('window');
+          return;
+        } catch {
+          try {
+            await api('portalOwnerSetupStatus');
+            setOwnerSetup('activate');
+            return;
+          } catch {
+            // The sign-in error below remains generic for ineligible accounts.
+          }
+        }
+      }
       await logout();
       setContext(null);
       setError(
@@ -119,7 +146,14 @@ export default function App() {
           Real SIN collection, retrieval and disposal remain disabled.
         </span>
       </div>
-      {context ? (
+      {ownerSetup ? (
+        <OwnerSetup mode={ownerSetup} api={api} signOut={() => void signOut()}
+          continueToPortal={async () => {
+            const result = await api<Context>('portalContext');
+            setContext(result);
+            setOwnerSetup(null);
+          }} />
+      ) : context ? (
         <Suspense
           fallback={
             <div className="app-loading" role="status">

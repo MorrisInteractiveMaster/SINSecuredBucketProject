@@ -1,3 +1,4 @@
+import { AdministratorAccess } from './AdministratorAccess';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
   filterRows,
@@ -352,8 +353,17 @@ export default function Dashboard({
       if (drawer && permissions.auditViewing) await audit(drawer);
     });
   }
+  const [dedicatedTesters, setDedicatedTesters] = useState(false);
+  useEffect(() => {
+    if (!dialog) setDedicatedTesters(false);
+  }, [dialog]);
   async function importList(text: string) {
-    await api('portalImportAllowlist', { csv: text });
+    if (dedicatedTesters && permissions.administratorManagement) {
+      await api('portalImportDedicatedTesters', { csv: text, confirmed: true });
+    } else {
+      await api('portalImportAllowlist', { csv: text });
+    }
+    setDedicatedTesters(false);
     setCsv('');
     setCsvPreview([]);
     setDialog(null);
@@ -1308,6 +1318,7 @@ export default function Dashboard({
                 )}
                 {tab === 'security' && (
                   <div className="security-grid">
+                    {permissions.administratorManagement && <AdministratorAccess api={api} signOut={signOut} />}
                     <section className="data-panel security-card">
                       <Icon name="shield" size={30} />
                       <h2>A small surface for sensitive work.</h2>
@@ -1674,6 +1685,11 @@ export default function Dashboard({
                     onChange={(e) => setAddEmail(e.target.value)}
                   />
                 </label>
+                {permissions.administratorManagement && <label className="callout">
+                <input type="checkbox" checked={dedicatedTesters}
+                  onChange={(event) => setDedicatedTesters(event.target.checked)} />
+                I independently confirmed that these are dedicated Gmail test accounts.
+              </label>}
                 <Button type="submit" kind="primary" busy={busy}>
                   Add approved identity
                 </Button>
@@ -1697,6 +1713,11 @@ export default function Dashboard({
                 {csvPreview.length} rows parsed. Review every entry before the
                 backend validates the import.
               </p>
+              {permissions.administratorManagement && <label className="callout">
+                <input type="checkbox" checked={dedicatedTesters}
+                  onChange={(event) => setDedicatedTesters(event.target.checked)} />
+                I independently confirmed that these are dedicated Gmail test accounts.
+              </label>}
               <div className="table-scroll import-preview">
                 <table>
                   <thead>

@@ -30,7 +30,11 @@ export async function verifyOrganizationalAssertion(
       ![0, '0'].includes(payload.acct)
     )
       deny();
-    return { tenantId: payload.tid, objectId: payload.oid, member: true };
+    const account = payload.preferred_username ?? payload.email;
+    return {
+      tenantId: payload.tid, objectId: payload.oid, member: true,
+      accountEmail: typeof account === 'string' ? account.trim().toLowerCase() : null,
+    };
   } catch (error) {
     if (error instanceof PortalError) throw error;
     deny();

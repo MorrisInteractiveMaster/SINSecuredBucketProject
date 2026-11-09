@@ -30,6 +30,20 @@ for (const name of (await readdir(resolve(out, 'cloud'))).filter((n) =>
     ),
   );
 }
+if (process.env.MI_STAGE_OWNER_ACTIVATION === '1') {
+  const activation = await readFile(resolve(root, '.env.owner-activation'), 'utf8');
+  const fields = [
+    /^MI_OWNER_SETUP_DIGEST=[0-9a-f]{64}$/,
+    /^MI_OWNER_SETUP_EXPIRES_AT=\d{4}-\d{2}-\d{2}T[0-9:.]+Z$/,
+    /^MI_OWNER_SETUP_TENANT_ID=[0-9a-f-]{36}$/,
+    /^MI_OWNER_SETUP_CLIENT_ID=[0-9a-f-]{36}$/,
+  ];
+  const lines = activation.trimEnd().split('\n');
+  if (lines.length !== fields.length || !lines.every((line, index) => fields[index].test(line))) {
+    throw new Error('Owner activation configuration is malformed.');
+  }
+  await writeFile(resolve(out, '.env.gen-lang-client-0948635471'), activation, { mode: 0o600 });
+}
 console.log(
   'Prepared isolated Node 22 synthetic callable source. No deployment performed.',
 );

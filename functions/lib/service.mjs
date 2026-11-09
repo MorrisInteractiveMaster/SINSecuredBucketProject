@@ -113,6 +113,7 @@ export function createService({
           uid: who.uid,
           displayLabel: manageRole.displayLabel || 'MI administrator',
           permissions: {
+            administratorManagement: manageRole.administratorManagement === true,
             invitationManagement: manageRole.invitationManagement === true,
             statusViewing: manageRole.statusViewing === true,
             sensitiveRetrieval: manageRole.sensitiveRetrieval === true,
@@ -237,19 +238,23 @@ export function createService({
         deny('permission-denied', 'The code is invalid or expired.');
       return { verified: true };
     },
-    async importCsv(who, csv) {
+    async importCsv(who, csv, { approveDedicatedTesters = false } = {}) {
       let rows;
       try {
         rows = parseAllowlistCsv(csv);
       } catch {
         deny('invalid-argument', 'Check the CSV header, rows and limits.');
       }
+      if (approveDedicatedTesters && rows.some((row) =>
+        !row.email.endsWith('@gmail.com') || !['', 'Test account', 'Test Google'].includes(row.name)
+      )) deny('invalid-argument', 'Use dedicated Gmail test accounts and synthetic labels.');
       const newIds = rows.map(() => ({
         invitationId: randomUUID(),
         reference: randomUUID(),
       }));
       await db.runTransaction(async (tx) => {
         await admin(tx, who, 'invitationManagement');
+        if (approveDedicatedTesters) await admin(tx, who, 'administratorManagement');
         const refs = rows.map((row) => ref('allowlist', emailKey(row.email))),
           snapshots = await tx.getAll(...refs);
         rows.forEach((row, i) => {
@@ -257,6 +262,11 @@ export function createService({
           // Reimport/soft removal NEVER deletes a consumed slot or issues a fresh ID.
           tx.set(refs[i], {
             ...row,
+            dedicatedTestApproved: approveDedicatedTesters || old?.dedicatedTestApproved === true,
+            ...(old?.dedicatedTestUid ? {
+              dedicatedTestUid: old.dedicatedTestUid,
+              dedicatedTestProviderUid: old.dedicatedTestProviderUid,
+            } : {}),
             ...(old
               ? { invitationId: old.invitationId, reference: old.reference }
               : newIds[i]),

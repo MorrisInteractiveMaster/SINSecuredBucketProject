@@ -7,6 +7,7 @@ import { normalizeEmail, parseAllowlistCsv } from '../../functions/lib/csv.mjs';
 import {
   checkProvider,
   checkFresh,
+  emailKey,
   deny,
 } from '../../functions/lib/security.mjs';
 import { verifyOrganizationalAssertion } from '../../functions/lib/microsoft.mjs';
@@ -17,7 +18,11 @@ import {
   exactKeys,
   submissionFixture,
 } from './gates.mjs';
+import { createSetup } from './setup.mjs';
+import { isInitialOwnerEmail } from '../../functions/lib/admin-roster.mjs';
+import { getPortalIdentity } from './identity.mjs';
 const OPERATIONS = [
+  'portalActivateOwner', 'portalOwnerSetupStatus', 'portalAdministrators', 'portalOwnerWindow', 'portalImportDedicatedTesters',
   'portalContext',
   'portalImportAllowlist',
   'portalListContractors',
@@ -35,9 +40,11 @@ export function createCloudRuntime({
   auth,
   projectId,
   emulator = false,
+  activation,
   clock = Date.now,
   verifyMicrosoft = verifyOrganizationalAssertion,
 }) {
+  const setup = createSetup({ db, clock, projectId, emulator, config: activation, verifyMicrosoft });
   return async function dispatch(request) {
     exactKeys(request.data, ['operation', 'payload', 'microsoftIdToken']);
     if (!OPERATIONS.includes(request.data.operation))
@@ -51,52 +58,55 @@ export function createCloudRuntime({
     const header = request.rawRequest?.headers?.authorization;
     if (typeof header !== 'string' || !header.startsWith('Bearer '))
       deny('unauthenticated', 'Please sign in.');
-    const token = await auth.verifyIdToken(header.slice(7), true);
+    if (projectId !== TARGET.projectId && !(emulator && projectId === 'demo-mi-sin-portal')) deny();
+    const { token, user } = await getPortalIdentity(auth, header.slice(7));
     if (request.auth && token.uid !== request.auth.uid) deny();
     const providerId = token.firebase?.sign_in_provider;
     checkProvider(providerId);
     checkFresh(token.auth_time, clock());
-    const user = await auth.getUser(token.uid),
-      email = normalizeEmail(token.email),
-      provider = user.providerData.find((p) => p.providerId === providerId);
-    if (user.disabled || !provider || normalizeEmail(user.email) !== email)
+    let email;
+    let providerEmail;
+    try {
+      email = normalizeEmail(token.email);
+      if (normalizeEmail(user.email) !== email) deny();
+      const linked = user.providerData.find((entry) => entry.providerId === providerId);
+      if (linked?.email) providerEmail = normalizeEmail(linked.email);
+    } catch {
       deny();
-    const policy = assertRelease(
-      (await db.doc('policy/cloud-test').get()).data(),
-      projectId,
-      clock(),
-      emulator,
-    );
-    const who = {
-      uid: token.uid,
-      email,
-      providerId,
-      providerUid: provider.uid,
-      authTime: token.auth_time,
-      emailTrusted: true,
+    }
+    const provider = user.providerData.find((p) => p.providerId === providerId);
+    if (user.disabled || !provider?.uid) deny();
+    let who = {
+      uid: token.uid, email, providerId, providerUid: provider.uid,
+      authTime: token.auth_time, emailTrusted: true,
+      googleMailboxVerified: providerId === 'google.com' && token.email_verified === true &&
+        providerEmail === email && email.endsWith('@gmail.com'),
+      microsoftMailboxMatched: providerEmail === email,
     };
-    // Email ownership is an explicit, privileged operator attestation for dedicated test identities only.
-    // It is not inferred from a domain or an unverified OAuth email claim.
-    assertTestIdentity(
-      (await db.doc(`testIdentities/${who.uid}`).get()).data(),
-      who,
-    );
-    const adminUids = Array.isArray(policy.adminUids)
-      ? policy.adminUids
-      : [policy.adminUid];
+    const data = request.data.payload ?? {};
+    const op = request.data.operation;
+    let policy;
+    if (!['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op)) {
+      policy = assertRelease((await db.doc('policy/cloud-test').get()).data(), projectId, clock(), emulator);
+    }
+    if (['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op) &&
+        (!isInitialOwnerEmail(who.email) || providerId !== 'microsoft.com' || !who.microsoftMailboxMatched)) deny();
+    if (op === 'portalOwnerSetupStatus') return setup.status(who, request.data.microsoftIdToken, data);
+    if (op === 'portalActivateOwner') return setup.activate(who, request.data.microsoftIdToken, data);
+    if (op === 'portalOwnerWindow') return setup.window(who, request.data.microsoftIdToken, data);
+    const adminUids = Array.isArray(policy.adminUids) ? policy.adminUids : [policy.adminUid];
     if (adminUids.length > 4) deny();
     if (adminUids.includes(who.uid)) {
-      if (
-        providerId !== 'microsoft.com' ||
-        (!emulator && !approvedAdminEmail(who.email))
-      )
-        deny();
+      if (providerId !== 'microsoft.com' || (!emulator && !approvedAdminEmail(who.email))) deny();
       who.organization = await verifyMicrosoft(request.data.microsoftIdToken, {
-        tenantId: policy.tenantId,
-        clientId: policy.microsoftClientId,
-        providerUid: provider.uid,
+        tenantId: policy.tenantId, clientId: policy.microsoftClientId, providerUid: provider.uid,
       });
+    } else if (op === 'portalContext' && approvedAdminEmail(who.email)) {
+      who = await setup.enroll(who, request.data.microsoftIdToken, policy);
     }
+    const identity = (await db.doc(`testIdentities/${who.uid}`).get()).data();
+    if (identity || !who.googleMailboxVerified) assertTestIdentity(identity, who);
+    else await setup.verifyDedicatedTester(who);
     // One shared budget for the single cloud callable; rejected traffic still has platform cost.
     await db.runTransaction(async (tx) => {
       const globalRef = db.doc('testLimits/global'),
@@ -131,8 +141,7 @@ export function createCloudRuntime({
       pepper: null,
       sendCode: async () => deny('failed-precondition'),
     });
-    const data = request.data.payload ?? {},
-      op = request.data.operation;
+    if (op === 'portalAdministrators') return setup.manage(who, service, data);
     const operations = createAdminOperations({ db, service, clock });
     const administrative = {
       portalOverview: 'overview',
@@ -150,6 +159,11 @@ export function createCloudRuntime({
     if (op === 'portalListContractors') {
       exactKeys(data, []);
       return service.list(who);
+    }
+    if (op === 'portalImportDedicatedTesters') {
+      exactKeys(data, ['csv', 'confirmed']);
+      if (data.confirmed !== true) deny('invalid-argument');
+      return service.importCsv(who, data.csv, { approveDedicatedTesters: true });
     }
     if (op === 'portalImportAllowlist') {
       await service.authorize(who, 'invitationManagement');
@@ -175,6 +189,13 @@ export function createCloudRuntime({
           )
           .map((d) => d.data().email),
       );
+      const unknown = rows.filter((row) => !emails.has(row.email));
+      if (unknown.length) {
+        const entries = await db.getAll(...unknown.map((row) => db.doc('allowlist/' + emailKey(row.email))));
+        entries.forEach((entry, index) => {
+          if (entry.data()?.dedicatedTestApproved === true) emails.add(unknown[index].email);
+        });
+      }
       if (
         rows.some(
           (r) =>

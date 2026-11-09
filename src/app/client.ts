@@ -62,6 +62,12 @@ export function message(error: unknown) {
     return 'This action is not permitted for your current identity and role.';
   if (code.includes('failed-precondition'))
     return 'Synthetic testing is not active or its setup is incomplete. Ask the portal operator to review the test policy.';
+  if (
+    code === 'functions/unavailable' &&
+    (error as { message?: string })?.message ===
+      'Portal identity verification is unavailable. The operator should check the runtime Auth reader.'
+  )
+    return 'Portal identity verification is unavailable. Ask the portal operator to verify the dedicated runtime Auth reader.';
   if (code.includes('unavailable') || code.includes('deadline-exceeded'))
     return 'The portal backend could not be reached. Please try again shortly.';
   if (code.includes('unauthorized-domain'))

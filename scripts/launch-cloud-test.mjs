@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { preflight } from './preflight-cloud-test.mjs';
 import { checkManifest } from './check-cloud-release.mjs';
 const phase = process.argv[2],
@@ -60,4 +60,10 @@ if (phase === 'functions') {
   )
     throw new Error('Dedicated active runtime service account required.');
 }
-execFileSync('npx', args, { stdio: 'inherit' });
+execFileSync('npx', args, {
+  stdio: 'inherit',
+  env: {
+    ...process.env,
+    MI_STAGE_OWNER_ACTIVATION: phase === 'functions' && existsSync('.env.owner-activation') ? '1' : '0',
+  },
+});

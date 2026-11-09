@@ -13,6 +13,12 @@ const dispatch = createCloudRuntime({
   db: getFirestore(app, 'mi-sin-portal'),
   auth: getAuth(app),
   projectId,
+  activation: {
+    digest: process.env.MI_OWNER_SETUP_DIGEST,
+    expiresAt: process.env.MI_OWNER_SETUP_EXPIRES_AT,
+    tenantId: process.env.MI_OWNER_SETUP_TENANT_ID,
+    clientId: process.env.MI_OWNER_SETUP_CLIENT_ID,
+  },
 });
 export const miSinSynthetic = onRequest(
   {
