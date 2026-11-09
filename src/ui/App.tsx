@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
 import {
   api,
   login,
@@ -8,7 +8,8 @@ import {
   devLogin,
   message,
 } from '../app/client';
-import type { Context } from './types';
+import { authorizationFailure, authorizationRetryDelay } from '../app/session';
+import type { Api, Context } from './types';
 import { OwnerSetup } from './OwnerSetup';
 import { Button, Icon } from './components';
 const Dashboard = lazy(() => import('./Dashboard'));
@@ -21,21 +22,51 @@ export default function App() {
     [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(''),
+    [interrupted, setInterrupted] = useState(false),
     [toast, setToast] = useState<{ text: string; error: boolean } | null>(null);
   function notify(text: string, error = false) {
     setToast({ text, error });
   }
-  async function signOut() {
-    await logout();
+  const sessionEpoch = useRef(0);
+  const operationsBlocked = useRef(false);
+  const operationEpoch = useRef(0);
+  const signingOut = useRef(false);
+  const closeSession = useCallback(async (reason?: string, asStaff = false) => {
+    if (signingOut.current) return;
+    signingOut.current = true;
+    sessionEpoch.current++;
+    operationEpoch.current++;
+    operationsBlocked.current = true;
     setContext(null);
-    setStep('welcome');
+    setInterrupted(false);
+    setStep(reason ? 'signin' : 'welcome');
+    if (reason) setStaff(asStaff);
     setOwnerSetup(null);
-    setError('');
-  }
+    setError(reason ?? '');
+    setToast(null);
+    setBusy(true);
+    try {
+      await logout();
+    } catch {
+      console.warn('Portal session cleanup failed');
+    } finally {
+      signingOut.current = false;
+      setBusy(false);
+    }
+  }, []);
+  const guardedApi: Api = useCallback(async (name, data) => {
+    if (operationsBlocked.current) throw { code: 'functions/unavailable' };
+    const epoch = operationEpoch.current;
+    const result = await api(name, data);
+    if (epoch !== operationEpoch.current) throw { code: 'functions/unavailable' };
+    return result;
+  }, []);
+  const signOut = () => closeSession();
   async function signIn(
     provider: 'microsoft.com' | 'google.com',
     fixture?: 'admin' | 'contractor',
   ) {
+    if (signingOut.current) return;
     setBusy(true);
     setError('');
     let providerAuthenticated = false;
@@ -51,6 +82,8 @@ export default function App() {
           return;
         }
       }
+      operationsBlocked.current = false;
+      setInterrupted(false);
       setContext(c);
       setStep('authorized');
     } catch (e) {
@@ -92,30 +125,58 @@ export default function App() {
           ),
         );
   }, [step]);
+  const sessionKind = context?.kind;
   useEffect(() => {
-    if (!context) return;
-    const timer = setInterval(() => {
-      void api<Context>('portalContext')
-        .then((c) => setContext(c))
-        .catch(() => {
-          void signOut();
-          setError(
-            'Your portal authorization changed or expired. Please sign in again.',
-          );
-        });
-    }, 60000);
-    return () => clearInterval(timer);
-  }, [context?.kind]);
+    if (!sessionKind) return;
+    const epoch = sessionEpoch.current;
+    let cancelled = false;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    const current = () => !cancelled && sessionEpoch.current === epoch;
+    const schedule = (delay: number) => { timer = setTimeout(() => void refresh(), delay); };
+    async function refresh() {
+      try {
+        const result = await api<Context>('portalContext');
+        if (!current()) return;
+        if (result.kind !== sessionKind) {
+          void closeSession('Your portal access changed. Sign in again.', sessionKind === 'admin');
+          return;
+        }
+        failures = 0;
+        operationsBlocked.current = false;
+        setInterrupted(false);
+        setContext(result);
+        schedule(60_000);
+      } catch (error) {
+        if (!current()) return;
+        const category = authorizationFailure(error);
+        console.warn('Portal authorization check failed', category);
+        if (category === 'temporary') {
+          operationEpoch.current++;
+          operationsBlocked.current = true;
+          setInterrupted(true);
+          schedule(authorizationRetryDelay(++failures));
+        } else {
+          void closeSession(category === 'expired'
+            ? 'Your session expired. Sign in again to continue.'
+            : 'Your portal access was denied or revoked. Sign in again or contact Morris Interactive.',
+          sessionKind === 'admin');
+        }
+      }
+    }
+    schedule(60_000);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [sessionKind, closeSession]);
   useEffect(() => {
+    if (!sessionKind) return;
+    const epoch = sessionEpoch.current;
     let timer: ReturnType<typeof setTimeout>;
     const touch = () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
-        if (context) {
-          void signOut();
-          setError('Your session expired after ten minutes of inactivity.');
-        }
-      }, 600000);
+        if (sessionEpoch.current === epoch)
+          void closeSession('Your session expired after ten minutes of inactivity. Sign in again to continue.', sessionKind === 'admin');
+      }, 600_000);
     };
     touch();
     window.addEventListener('pointerdown', touch);
@@ -125,7 +186,7 @@ export default function App() {
       window.removeEventListener('pointerdown', touch);
       window.removeEventListener('keydown', touch);
     };
-  }, [context?.kind]);
+  }, [sessionKind, closeSession]);
   useEffect(() => {
     if (!toast) return;
     const timer = setTimeout(() => setToast(null), 6000);
@@ -146,10 +207,14 @@ export default function App() {
           Real SIN collection, retrieval and disposal remain disabled.
         </span>
       </div>}
+      {context && interrupted && <p className="session-warning" role="status">
+        Checking your connection and access. You can review loaded information; portal actions are paused.
+      </p>}
       {ownerSetup ? (
         <OwnerSetup mode={ownerSetup} api={api} signOut={() => void signOut()}
           continueToPortal={async () => {
             const result = await api<Context>('portalContext');
+            operationsBlocked.current = false;
             setContext(result);
             setOwnerSetup(null);
           }} />
@@ -165,14 +230,15 @@ export default function App() {
           {context.kind === 'admin' ? (
             <Dashboard
               context={context}
-              api={api}
+              api={guardedApi}
+              authorizationPending={interrupted}
               notify={notify}
               signOut={() => void signOut()}
             />
           ) : (
             <Contractor
               context={context}
-              api={api}
+              api={guardedApi}
               local={isLocal}
               onContext={setContext}
               notify={notify}

@@ -2776,3 +2776,73 @@ th {
   max-width: min(280px, calc(100vw - 16px));
   pointer-events: auto;
 }
+
+/* Tracker controls and readable secondary text on dark surfaces. */
+:root {
+  --muted: #d0cec9;
+}
+.tracker-column-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tracker-column-heading > button {
+  min-height: 28px;
+  padding: 2px 4px;
+  gap: 8px;
+}
+.help-standalone .help-touch {
+  position: static;
+  opacity: 1;
+  color: #d0cec9;
+  background: transparent;
+  min-width: 28px;
+  min-height: 28px;
+}
+.help-standalone .help-touch:hover {
+  background: #414141;
+  color: #fff;
+}
+.tooltip {
+  z-index: 1000;
+  font-size: 13px;
+}
+.table-scroll th,
+.table-footer,
+.table-footer .page-size,
+.field-label,
+.advanced-filters label,
+.name-cell small {
+  color: var(--muted);
+}
+.table-scroll th,
+.table-footer,
+.table-footer .btn,
+.page-size select,
+.badge {
+  font-size: 12px;
+}
+.table-footer > div {
+  flex-wrap: wrap;
+}
+.page-size select {
+  min-width: 52px;
+  min-height: 32px;
+  color: var(--text);
+  background: #282828;
+  border-color: #777;
+}
+.table-footer button:disabled {
+  opacity: 1;
+  color: #a6a49d;
+  background: #262626;
+  border-color: #4a4a4a;
+}
+.session-warning {
+  margin: 0;
+  padding: 10px 18px;
+  background: #3b2d22;
+  color: #f4dec8;
+  border-bottom: 1px solid #725239;
+  font-size: 13px;
+}

@@ -501,3 +501,52 @@ test('staff can add a contractor without entering a name and tracker omits the a
     csv: 'name,email,status\n"","lester@example.org",active',
   }));
 });
+
+test('47 tracker rows paginate at 10, 20 and 50 while preserving the choice through sort, filter and reload', async () => {
+  const props = fixture();
+  const original = props.api.getMockImplementation()!;
+  const rows = Array.from({ length: 47 }, (_, i) => ({
+    ...row, invitationId: String(i), name: 'Contractor ' + String(i + 1).padStart(2, '0'),
+    submissionStatus: i < 21 ? 'submitted' : 'pending',
+  }));
+  props.api.mockImplementation(async (name) => {
+    const result = await original(name);
+    return name === 'portalOverview' ? { ...result, rows } as any : result;
+  });
+  render(<Dashboard {...props} api={props.api as any} context={context} />);
+  const user = userEvent.setup();
+  const selector = await screen.findByRole('combobox', { name: 'Rows per page' });
+  const table = () => screen.getByRole('table');
+  const count = () => within(table()).getAllByRole('row').length - 1;
+  expect(count()).toBe(10);
+  expect(screen.getByText('1 / 5')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Next page' }));
+  expect(screen.getByText('2 / 5')).toBeInTheDocument();
+  await user.selectOptions(selector, '20');
+  expect(count()).toBe(20);
+  expect(screen.getByText('1 / 3')).toBeInTheDocument();
+  const sort = within(table()).getByRole('button', { name: 'Name', exact: true });
+  const header = sort.closest('th')!;
+  const help = within(header).getByRole('button', { name: /Help: Sort by Name/ });
+  await user.click(help);
+  const tooltip = screen.getByRole('tooltip');
+  expect(table().contains(tooltip)).toBe(false);
+  expect(header).toHaveAttribute('aria-sort', 'ascending');
+  await user.click(sort);
+  expect(header).toHaveAttribute('aria-sort', 'descending');
+  expect(count()).toBe(20);
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Submission status filter' }), 'submitted');
+  expect(count()).toBe(20);
+  expect(screen.getByText('1 / 2')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Next page' }));
+  expect(count()).toBe(1);
+  await user.click(screen.getByRole('button', { name: 'Refresh', exact: true }));
+  await waitFor(() => expect(props.api.mock.calls.filter(([name]) => name === 'portalOverview')).toHaveLength(2));
+  expect(selector).toHaveValue('20');
+  expect(count()).toBe(1);
+  await user.selectOptions(screen.getByRole('combobox', { name: 'Submission status filter' }), 'all');
+  await user.selectOptions(selector, '50');
+  expect(count()).toBe(47);
+  expect(screen.getByText('1 / 1')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+});
