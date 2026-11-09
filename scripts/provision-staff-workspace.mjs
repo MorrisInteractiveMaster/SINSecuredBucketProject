@@ -2,11 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
-import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { initialRoster } from '../functions/lib/admin-roster.mjs';
-import { emailKey } from '../functions/lib/security.mjs';
-import { staffScope, staffPermissions, validStaffPolicy } from '../cloud-functions/cloud/staff.mjs';
+import { staffScope, staffGuid, validStaffPolicy } from '../cloud-functions/cloud/staff.mjs';
 import { TARGET } from '../cloud-functions/cloud/gates.mjs';
 
 async function main() {
@@ -18,25 +16,15 @@ async function main() {
   const action = process.argv[3];
   if (action && !['--execute', '--approve-invitations', '--pause'].includes(action)) throw new Error();
   const policy = {
-    version: 1, projectId: TARGET.projectId, databaseId: TARGET.databaseId,
+    version: 2, projectId: TARGET.projectId, databaseId: TARGET.databaseId,
     tenantId: input.tenantId, microsoftClientId: input.microsoftClientId,
     enabled: true, invitationImportApproved: false, realCollectionEnabled: false,
     sensitiveRetrievalEnabled: false, disposalEnabled: false,
   };
-  if (!validStaffPolicy(policy) || !Array.isArray(input.members) || input.members.length !== initialRoster.length)
-    throw new Error();
-  const guid = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
-  const known = new Set(initialRoster.map(({ key }) => key));
-  const uids = new Set();
-  const objects = new Set();
-  for (const entry of input.members) {
-    if (!known.delete(entry.key) || !/^[A-Za-z0-9_-]{1,128}$/.test(entry.uid || '') ||
-        !guid.test(entry.objectId || '') || uids.has(entry.uid) || objects.has(entry.objectId)) throw new Error();
-    uids.add(entry.uid);
-    objects.add(entry.objectId);
-  }
+  if (!validStaffPolicy(policy) || Object.keys(input).some((key) =>
+    !['tenantId', 'microsoftClientId', 'privacyApprovalReference'].includes(key))) throw new Error();
   if (!action) {
-    console.log('Plan validated for four pinned staff identities. No remote calls or writes.');
+    console.log('Plan validated for four preapproved staff accounts. No remote calls or writes.');
     return;
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -49,26 +37,19 @@ async function main() {
     rl.close();
   }
   const app = initializeApp({ projectId: TARGET.projectId, credential: applicationDefault() });
-  const auth = getAuth(app);
   const db = staffScope(getFirestore(app, TARGET.databaseId));
-  for (const entry of action === '--execute' ? input.members : []) {
-    const user = await auth.getUser(entry.uid);
-    const provider = user.providerData.find(({ providerId }) => providerId === 'microsoft.com');
-    if (user.disabled || emailKey(user.email) !== entry.key || provider?.uid !== entry.objectId) throw new Error();
-  }
   const policyRef = db.doc('policy/access');
-  const refs = input.members.map(({ uid }) => db.doc('roles/' + uid));
+  const slots = initialRoster.map(({ key }) => db.doc('approvedAdministrators/' + key));
   await db.runTransaction(async (tx) => {
-    const prior = await tx.getAll(policyRef, ...refs);
+    const policyDoc = await tx.get(policyRef);
+    const existing = policyDoc.data();
+    const sameConfig = existing?.projectId === TARGET.projectId &&
+      existing.databaseId === TARGET.databaseId && existing.tenantId === policy.tenantId &&
+      existing.microsoftClientId === policy.microsoftClientId;
     if (action !== '--execute') {
-      const [policyDoc, ...roles] = prior;
-      const existing = policyDoc.data();
-      if (!existing || existing.projectId !== TARGET.projectId || existing.databaseId !== TARGET.databaseId ||
-          existing.tenantId !== policy.tenantId || existing.microsoftClientId !== policy.microsoftClientId ||
-          roles.some((doc, i) => doc.data()?.emailKey !== input.members[i].key ||
-            doc.data()?.objectId !== input.members[i].objectId)) throw new Error();
+      if (!sameConfig || !validStaffPolicy(existing)) throw new Error();
       if (action === '--approve-invitations') {
-        if (!validStaffPolicy(existing) || !guid.test(input.privacyApprovalReference || '')) throw new Error();
+        if (!staffGuid.test(input.privacyApprovalReference || '')) throw new Error();
         tx.update(policyRef, { invitationImportApproved: true, privacyApprovalReference: input.privacyApprovalReference });
       } else {
         tx.update(policyRef, { enabled: false, invitationImportApproved: false });
@@ -79,23 +60,39 @@ async function main() {
       });
       return;
     }
-    if (prior.some((doc) => doc.exists)) throw new Error();
-    tx.create(policyRef, policy);
-    refs.forEach((ref, index) => {
-      const member = input.members[index];
-      tx.create(ref, {
-        emailKey: member.key, objectId: member.objectId, tenantId: policy.tenantId,
-        displayLabel: initialRoster.find(({ key }) => key === member.key).label, active: true,
-        ...Object.fromEntries(staffPermissions.map((permission) => [permission, true])),
-      });
+    const slotDocs = await tx.getAll(...slots);
+    const previousRoles = await tx.get(db.collection('roles').limit(initialRoster.length + 1));
+    if (policyDoc.exists && (!sameConfig || existing.version !== 1 ||
+        !validStaffPolicy({ ...existing, enabled: true }) ||
+        previousRoles.size !== initialRoster.length)) throw new Error();
+    if (slotDocs.some((doc) => doc.exists) || (!policyDoc.exists && previousRoles.size)) throw new Error();
+    const roles = new Map();
+    const objects = new Set();
+    for (const doc of previousRoles.docs) {
+      const row = doc.data();
+      if (!initialRoster.some(({ key }) => key === row.emailKey) || roles.has(row.emailKey) ||
+          !staffGuid.test(row.objectId || '') || objects.has(row.objectId) ||
+          !/^[A-Za-z0-9_-]{1,128}$/.test(doc.id) || row.tenantId !== policy.tenantId ||
+          typeof row.active !== 'boolean') throw new Error();
+      roles.set(row.emailKey, { uid: doc.id, objectId: row.objectId, active: row.active });
+      objects.add(row.objectId);
+    }
+    const bindings = [...objects].map((oid) => db.doc('objectBindings/' + oid));
+    if (bindings.length && (await tx.getAll(...bindings)).some((doc) => doc.exists)) throw new Error();
+    if (policyDoc.exists) tx.update(policyRef, { version: 2 });
+    else tx.create(policyRef, policy);
+    initialRoster.forEach(({ key }, index) => {
+      const prior = roles.get(key);
+      tx.create(slots[index], { key, active: true, ...prior });
+      if (prior) tx.create(db.doc('objectBindings/' + prior.objectId), { uid: prior.uid, key });
     });
     tx.create(db.collection('auditEvents').doc(), {
-      event: 'staff_workspace_provisioned', actorUid: 'approved-deployment', at: Timestamp.now(),
+      event: policyDoc.exists ? 'staff_roster_migrated' : 'staff_workspace_provisioned', actorUid: 'approved-deployment', at: Timestamp.now(),
     });
   });
   console.log('Reviewed staff workspace action completed. Sensitive operations remain closed.');
 }
 main().catch(() => {
-  console.error('Staff provisioning stopped. Verify the private roster, tenant, scoped ADC/Auth access and absence of conflicting records.');
+  console.error('Staff provisioning stopped. Verify the tenant, application ID, scoped Firestore ADC access and absence of conflicting records.');
   process.exitCode = 1;
 });

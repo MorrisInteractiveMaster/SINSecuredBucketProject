@@ -84,16 +84,15 @@ export function createCloudRuntime({
       googleMailboxVerified: providerId === 'google.com' && token.email_verified === true &&
         providerEmail === email && email.endsWith('@gmail.com'),
       microsoftMailboxMatched: providerEmail === email,
+      linkedMailboxConflict: Boolean(providerEmail && providerEmail !== email),
     };
     const data = request.data.payload ?? {};
     const op = request.data.operation;
+    if (op === 'portalContext') exactKeys(data, []);
     if (!/^[A-Za-z0-9_-]{1,128}$/.test(who.uid)) deny();
-    const staffRole = await staff.role(who.uid);
-    if (staffRole) {
-      const bound = await staff.bind(who, request.data.microsoftIdToken, staffRole);
-      await enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock);
-      return staff.dispatch(bound, op, data);
-    }
+    const staffActor = await staff.resolve(who, request.data.microsoftIdToken, op,
+      () => enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock));
+    if (staffActor) return staff.dispatch(staffActor, op, data);
     let policy;
     if (!['portalActivateOwner', 'portalOwnerSetupStatus', 'portalOwnerWindow'].includes(op)) {
       policy = assertRelease((await db.doc('policy/cloud-test').get()).data(), projectId, clock(), emulator);

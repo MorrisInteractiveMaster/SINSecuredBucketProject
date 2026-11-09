@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { generateKeyPair, SignJWT } from 'jose';
+import { verifyOrganizationalAssertion } from '../functions/lib/microsoft.mjs';
 import { test } from 'node:test';
 import { initialRoster } from '../functions/lib/admin-roster.mjs';
 import { emailKey } from '../functions/lib/security.mjs';
@@ -15,35 +17,53 @@ const policy = {
 };
 const who = { uid: 'fictional-uid', email: 'staff@example.org', providerId: 'microsoft.com', providerUid: objectId, authTime: Date.now() / 1000 };
 const role = { active: true, emailKey: emailKey(who.email), objectId, tenantId, statusViewing: true, invitationManagement: true };
-function fixture() {
-  const rows = new Map([['staffWorkspace/v1/policy/access', policy], ['staffWorkspace/v1/roles/' + who.uid, role]]);
+const prefix = 'staffWorkspace/v1/';
+const slotPath = prefix + 'approvedAdministrators/' + role.emailKey;
+const rolePath = prefix + 'roles/' + who.uid;
+const assertion = { member: true, objectId, tenantId, accountEmail: who.email, appRoles: ['MiSinPortal.Staff'] };
+function fixture({ version = 1, verifyMicrosoft = async () => assertion } = {}) {
+  const rows = new Map([[prefix + 'policy/access', { ...policy, version }]]);
+  if (version === 1) rows.set(rolePath, role);
+  else rows.set(slotPath, { key: role.emailKey, active: true });
+  let queue = Promise.resolve();
+  let sequence = 0;
   const db = {
     doc: (path) => ({
-      path, get: async () => ({ data: () => rows.get(path) }),
-      collection: (name) => ({ doc: (id) => db.doc(path + '/' + name + '/' + id) }),
+      path, get: async () => ({ exists: rows.has(path), data: () => structuredClone(rows.get(path)) }),
+      collection: (name) => ({ doc: (id = ++sequence) => db.doc(path + '/' + name + '/' + id) }),
     }),
-    async runTransaction(action) {
-      const writes = [];
-      const result = await action({
-        get: (ref) => ref.get(),
-        getAll: (...refs) => Promise.all(refs.map((r) => r.get())),
-        create: (ref, value) => writes.push([ref.path, value]),
-        set: (ref, value) => writes.push([ref.path, value]),
+    getAll: (...refs) => Promise.all(refs.map((r) => r.get())),
+    runTransaction(action) {
+      const result = queue.then(async () => {
+        const writes = [];
+        const value = await action({
+          get: (ref) => ref.get(),
+          getAll: db.getAll,
+          create: (ref, data) => {
+            assert.equal(rows.has(ref.path), false);
+            writes.push([ref.path, data]);
+          },
+          set: (ref, data) => writes.push([ref.path, data]),
+          update: (ref, data) => writes.push([ref.path, { ...rows.get(ref.path), ...data }]),
+        });
+        writes.forEach(([path, data]) => rows.set(path, data));
+        return value;
       });
-      writes.forEach(([path, value]) => rows.set(path, value));
+      queue = result.catch(() => {});
       return result;
     },
   };
-  return { rows, staff: createStaffWorkspace({ db, clock: Date.now,
-    verifyMicrosoft: async () => ({ member: true, objectId, tenantId }),
-    roster: [{ key: role.emailKey }],
-  }) };
+  const staff = createStaffWorkspace({ db, clock: Date.now, verifyMicrosoft,
+    roster: [{ key: role.emailKey, label: 'Fictional Staff' }],
+  });
+  const signIn = (user = who, op = 'portalContext') => staff.resolve(user, 'mock-signed-assertion', op, async () => {});
+  return { rows, staff, signIn };
 }
 test('pinned staff context works without a synthetic window and never grants sensitive actions', async () => {
-  const { staff, rows } = fixture();
+  const { staff, rows, signIn } = fixture();
   assert.equal(initialRoster.length, 4);
   assert.equal(validStaffPolicy({ ...policy, realCollectionEnabled: true }), false);
-  const bound = await staff.bind(who, 'mock-signed-assertion', role);
+  const bound = await signIn();
   const context = await staff.dispatch(bound, 'portalContext', {});
   assert.equal(context.workspace, 'staff');
   assert.equal(context.permissions.invitationManagement, false);
@@ -53,8 +73,8 @@ test('pinned staff context works without a synthetic window and never grants sen
   await assert.rejects(staff.dispatch(bound, 'portalContext', {}));
 });
 test('invitation import is guarded by privacy approval and reuses the record on revocation', async () => {
-  const { staff, rows } = fixture();
-  const bound = await staff.bind(who, 'assertion', role);
+  const { staff, rows, signIn } = fixture();
+  const bound = await signIn();
   const csv = 'name,email,status\nFictional Person,contractor@example.org,active';
   await assert.rejects(staff.dispatch(bound, 'portalImportAllowlist', { csv }),
     (error) => error.code === 'failed-precondition');
@@ -68,11 +88,67 @@ test('invitation import is guarded by privacy approval and reuses the record on 
   assert.equal(rows.get(path).invitationId, invitationId);
 });
 test('staff binding rejects Google, mismatched identity and revoked roles', async () => {
-  const { staff } = fixture();
-  await assert.rejects(staff.bind({ ...who, providerId: 'google.com' }, 'assertion', role));
-  await assert.rejects(staff.bind({ ...who, providerUid: tenantId }, 'assertion', role));
-  await assert.rejects(staff.bind(who, 'assertion', { ...role, active: false }));
-  await assert.rejects(staff.bind({ ...who, email: 'other@example.org' }, 'assertion', role));
+  const { signIn, rows } = fixture();
+  await assert.rejects(signIn({ ...who, providerId: 'google.com' }));
+  await assert.rejects(signIn({ ...who, providerUid: tenantId }));
+  await assert.rejects(signIn({ ...who, email: 'other@example.org' }));
+  rows.set(rolePath, { ...role, active: false });
+  await assert.rejects(signIn());
+});
+test('first sign-in atomically enrolls once and pins the immutable identity', async () => {
+  const { rows, staff, signIn } = fixture({ version: 2, verifyMicrosoft: async (_, options) => {
+    assert.equal(options.tenantId, tenantId);
+    assert.equal(options.clientId, policy.microsoftClientId);
+    return { ...assertion, objectId: options.providerUid };
+  } });
+  await assert.rejects(signIn(who, 'portalOverview'));
+  assert.equal(rows.has(rolePath), false);
+  const [actor, repeat] = await Promise.all([signIn(), signIn()]);
+  assert.deepEqual(actor, repeat);
+  assert.equal((await staff.dispatch(actor, 'portalContext', {})).workspace, 'staff');
+  assert.equal(rows.get(slotPath).uid, who.uid);
+  assert.equal(rows.get(prefix + 'objectBindings/' + objectId).uid, who.uid);
+  assert.equal([...rows.values()].filter((row) => row.event === 'staff_identity_enrolled').length, 1);
+  await assert.rejects(signIn({ ...who, uid: 'replacement' }));
+  await assert.rejects(signIn({ ...who, providerUid: tenantId }));
+  rows.set(slotPath, { ...rows.get(slotPath), active: false });
+  await assert.rejects(signIn());
+  await assert.rejects(staff.dispatch(actor, 'portalContext', {}));
+});
+test('pending revocation, conflicting mailboxes and incomplete Entra assertions never bind', async () => {
+  const pending = fixture({ version: 2 });
+  assert.equal(await pending.signIn({ ...who, email: 'unknown@example.org' }), null);
+  await assert.rejects(pending.signIn({ ...who, linkedMailboxConflict: true }));
+  pending.rows.set(slotPath, { key: role.emailKey, active: false });
+  await assert.rejects(pending.signIn());
+  assert.equal(pending.rows.has(rolePath), false);
+  for (const bad of [
+    { accountEmail: null }, { accountEmail: 'other@example.org' }, { member: false },
+    { tenantId: objectId }, { objectId: tenantId }, { appRoles: [] }, { appRoles: ['MiSinPortal.Owner'] },
+  ]) {
+    const { signIn, rows } = fixture({ version: 2, verifyMicrosoft: async () => ({ ...assertion, ...bad }) });
+    await assert.rejects(signIn());
+    assert.equal(rows.has(rolePath), false);
+  }
+});
+test('Microsoft proof verifies RSA signature, audience, issuer, member claim and linked oid', async () => {
+  const { privateKey, publicKey } = await generateKeyPair('RS256');
+  const foreign = await generateKeyPair('RS256');
+  const clientId = policy.microsoftClientId;
+  const claims = {
+    iss: 'https://login.microsoftonline.com/' + tenantId + '/v2.0',
+    aud: clientId, tid: tenantId, oid: objectId, acct: 0,
+    preferred_username: who.email, roles: assertion.appRoles,
+  };
+  const sign = (overrides = {}, key = privateKey) => new SignJWT({ ...claims, ...overrides })
+    .setProtectedHeader({ alg: 'RS256' }).setIssuedAt().setExpirationTime('5m').sign(key);
+  const verify = (token) => verifyOrganizationalAssertion(token, { tenantId, clientId, providerUid: objectId }, publicKey);
+  assert.deepEqual(await verify(await sign()), assertion);
+  for (const bad of [
+    { aud: tenantId }, { iss: claims.iss.replace(tenantId, objectId) }, { tid: objectId },
+    { oid: tenantId }, { acct: 1 }, { acct: undefined },
+  ]) await assert.rejects(verify(await sign(bad)));
+  await assert.rejects(verify(await sign({}, foreign.privateKey)));
 });
 test('KMS custody uses a Canadian key, binds AAD and separates wrapping from unwrapping', async () => {
   const cryptoKey = 'projects/fictional-key-project/locations/northamerica-northeast1/keyRings/test/cryptoKeys/test';
