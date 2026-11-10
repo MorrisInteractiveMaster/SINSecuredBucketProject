@@ -321,6 +321,9 @@ test('cloud direct Firestore access is denied for every role, schema/ownership a
       'allowlist/any',
       'submissions/any',
       'submissions/any/nested/doc',
+      'staffWorkspace/v1/requestsV2/v1/assignments/any',
+      'staffWorkspace/v1/requestsV2/v1/payloads/any',
+      'staffWorkspace/v1/requestsV2/v1/templates/any',
     ]) {
       const d = doc(client, path);
       await assertFails(getDoc(d));

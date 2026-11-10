@@ -96,6 +96,7 @@ test('legacy migration preserves consumed records and reruns without duplicate a
   assert.equal((await migratePendingRequests(db, false, () => 1000000)).pending, 1);
   assert.equal([...values.keys()].filter((key) => key.includes('/assignments/')).length, 0);
   assert.equal((await migratePendingRequests(db, true, () => 1000000)).created, 1);
+  values.set('policy/bucket-field', { label: 'Changed globally', type: 'text', revision: 'new' });
   assert.equal((await migratePendingRequests(db, true, () => 1000000)).created, 0);
   assert.equal(values.get('submissions/' + uploadId).retrievalStatus, 'retrieved');
 });

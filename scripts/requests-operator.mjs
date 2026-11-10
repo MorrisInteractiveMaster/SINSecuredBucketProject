@@ -17,7 +17,16 @@ function stableId(value) {
   return [hex.slice(0, 8), hex.slice(8, 12), '4' + hex.slice(13, 16), 'a' + hex.slice(17, 20), hex.slice(20, 32)].join('-');
 }
 export async function migratePendingRequests(db, apply, clock = Date.now) {
-  const field = (await db.doc('policy/bucket-field').get()).data() ?? defaultBucketField;
+  const marker = db.doc('policy/requests-migration-v1');
+  const field = await db.runTransaction(async (tx) => {
+    const [saved, current] = await tx.getAll(marker, db.doc('policy/bucket-field'));
+    if (saved.exists) return saved.data().field;
+    const field = current.data() ?? defaultBucketField;
+    if (!validRequestTemplate({ label: field.label, type: field.type, instructions: '',
+      maxLength: requestKinds[field.type]?.max, status: 'active' })) throw new Error('Invalid legacy field');
+    if (apply) tx.create(marker, { field });
+    return field;
+  });
   const template = { label: field.label, type: field.type, instructions: '', maxLength: requestKinds[field.type]?.max, status: 'active', revision: field.revision };
   if (!validRequestTemplate(template)) throw new Error('Legacy field cannot migrate');
   const templateId = stableId(JSON.stringify(template));
@@ -31,9 +40,9 @@ export async function migratePendingRequests(db, apply, clock = Date.now) {
       if (entry?.status !== 'active' || !uuid.test(entry.invitationId || '') || !entry.expiresAt || entry.expiresAt.toMillis() <= clock()) return false;
       const slotId = createHash('sha256').update(entry.invitationId + ':' + templateId).digest('hex');
       const slot = db.doc('requestsV2/v1/slots/' + slotId);
-      const [legacy, existing, savedTemplate, currentField] = await tx.getAll(db.doc('submissions/' + entry.invitationId), slot, templateRef, db.doc('policy/bucket-field'));
+      const [legacy, existing, savedTemplate, currentField, migration] = await tx.getAll(db.doc('submissions/' + entry.invitationId), slot, templateRef, db.doc('policy/bucket-field'), marker);
       if (legacy.exists || existing.exists) return false;
-      if (Object.keys(field).some((key) => (currentField.data() ?? defaultBucketField)[key] !== field[key])) throw new Error('Legacy field changed during migration');
+      if (Object.keys(field).some((key) => (migration.data()?.field ?? currentField.data() ?? defaultBucketField)[key] !== field[key])) throw new Error('Legacy field changed during migration');
       if (savedTemplate.exists && JSON.stringify(savedTemplate.data()) !== JSON.stringify(template)) {
         // Firestore map order is not guaranteed. Compare each reviewed property.
         if (Object.keys(template).some((key) => savedTemplate.data()[key] !== template[key])) throw new Error('Migration template changed');

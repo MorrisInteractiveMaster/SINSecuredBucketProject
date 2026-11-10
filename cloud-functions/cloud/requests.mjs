@@ -91,7 +91,8 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
   }
   return {
     enabled: async () => requestsEnabled((await db.doc('policy/requests-v2').get()).data()),
-    async list(who) {
+    async list(who, data = {}) {
+      exactKeys(data, []);
       return db.runTransaction(async (tx) => {
         const policy = await release(tx);
         const entry = await contractor(tx, who);
@@ -113,7 +114,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
     },
     async template(who, data, authorize) {
       exactKeys(data, ['id', 'type', 'label', 'instructions', 'maxLength', 'status']);
-      const templateId = data.id ? id(data.id) : randomUUID();
+      const templateId = data.id !== undefined ? id(data.id) : randomUUID();
       const template = { type: data.type, label: data.label, instructions: data.instructions, maxLength: data.maxLength, status: data.status };
       if (!validRequestTemplate(template)) deny('invalid-argument', 'Check the request label, instructions, type and limits.');
       return db.runTransaction(async (tx) => {
