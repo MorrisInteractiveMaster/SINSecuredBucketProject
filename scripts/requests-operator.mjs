@@ -91,7 +91,7 @@ async function main() {
     if (action === 'pause') {
       if (!prior.exists) return;
       tx.update(flag, { enabled: false });
-    } else tx.set(flag, { enabled: true, approvalReference: input.approvalReference, filesEnabled: input.filesEnabled === true,
+    } else tx.set(flag, { enabled: true, cutover: true, approvalReference: input.approvalReference, filesEnabled: input.filesEnabled === true,
       ...(input.filesEnabled ? { fileApprovalReference: input.fileApprovalReference, storageBucket: REQUEST_BUCKET,
         filesKmsKey: input.filesKmsKey, scannerUrl: input.scannerUrl } : {}),
     });

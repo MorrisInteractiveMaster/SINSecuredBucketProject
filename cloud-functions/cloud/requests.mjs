@@ -91,6 +91,10 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
   }
   return {
     enabled: async () => requestsEnabled((await db.doc('policy/requests-v2').get()).data()),
+    cutover: async () => {
+      const policy = (await db.doc('policy/requests-v2').get()).data();
+      return policy?.cutover === true || requestsEnabled(policy);
+    },
     async list(who, data = {}) {
       exactKeys(data, []);
       return db.runTransaction(async (tx) => {

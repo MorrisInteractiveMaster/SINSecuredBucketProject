@@ -124,7 +124,7 @@ export function createCloudRuntime({
     };
     if (sin && (Object.hasOwn(bucketOps, op) || (op === 'portalContext' && await sin.enabled()))) {
       await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
-      const upgraded = requests && await requests.enabled();
+      const upgraded = requests && await requests.cutover();
       if (op === 'portalSubmitSin' && upgraded) deny('failed-precondition', 'Use your assigned information request.');
       const result = await sin[bucketOps[op] ?? 'context'](who, data);
       return result.kind === 'contractor' ? { ...result, requestsV2: Boolean(upgraded) } : result;

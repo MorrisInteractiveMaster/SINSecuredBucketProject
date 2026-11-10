@@ -117,7 +117,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
       exactKeys(data, []);
       const { role, policy } = await authorize(who, 'statusViewing');
       return {
-        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), requestsV2: Boolean(await requests?.enabled()), bucketField: await sin?.field(), uid: who.uid, displayLabel: role.displayLabel,
+        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), requestsV2: Boolean(await requests?.cutover()), bucketField: await sin?.field(), uid: who.uid, displayLabel: role.displayLabel,
         permissions: {
           ...Object.fromEntries(staffPermissions.map((permission) => [permission,
             role[permission] === true && (permission !== 'invitationManagement' || (policy.invitationImportApproved === true && staffGuid.test(policy.privacyApprovalReference || ''))),
