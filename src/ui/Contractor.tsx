@@ -10,7 +10,7 @@ import {
 } from '../app/encryption';
 import { ContractorRequests } from './Requests';
 export default function Contractor(props: Parameters<typeof FixtureContractor>[0]) {
-  if (props.context.requestsV2 && !props.context.needsVerification) return <ContractorRequests api={props.api} signOut={props.signOut} />;
+  if (props.context.requestsV2 && !props.context.needsVerification) return <ContractorRequests api={props.api} signOut={props.signOut} legacySubmitted={props.context.submitted} />;
   return props.context.liveSin ? <LiveContractor {...props} /> : <FixtureContractor {...props} />;
 }
 

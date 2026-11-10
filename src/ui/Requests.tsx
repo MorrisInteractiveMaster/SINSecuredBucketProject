@@ -10,7 +10,7 @@ type Assignment = { id: string; invitationId: string; templateId: string; templa
 type Catalog = { templates: Template[]; assignments: Assignment[]; filesEnabled: boolean };
 const freshTemplate = () => ({ type: 'sin', label: '', instructions: '', maxLength: 24, status: 'active' }) as Template;
 
-export function ContractorRequests({ api, signOut }: { api: Api; signOut: () => void }) {
+export function ContractorRequests({ api, signOut, legacySubmitted = false }: { api: Api; signOut: () => void; legacySubmitted?: boolean }) {
   const [requests, setRequests] = useState<Assignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filesEnabled, setFilesEnabled] = useState(false);
@@ -32,6 +32,7 @@ export function ContractorRequests({ api, signOut }: { api: Api; signOut: () => 
     <main className="requests-home">
       <p className="eyebrow">YOUR SECURE SPACE</p><h1>Your information requests</h1>
       <p>Complete each request when you’re ready. You can return later to finish the rest.</p>
+      {legacySubmitted && <p>Your earlier information has already been securely received.</p>}
       {!loading && <p role="status">{complete} of {requests.filter((request) => request.status !== 'cancelled').length} securely received</p>}
       {error && <p role="alert">{error} <Button onClick={() => void refresh()}>Retry</Button></p>}
       {loading ? <p role="status">Loading your requests…</p> : requests.length === 0 ? <p>No information requests are currently assigned to you.</p> :
@@ -56,11 +57,11 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
   }, []);
   function choose(selected?: File) {
     if (!selected) return;
-    if (selected.type !== 'application/pdf' || !/^[^/\\\u0000-\u001f\u007f]{1,100}\.pdf$/i.test(selected.name) ||
+    if ((selected.type !== '' && selected.type !== 'application/pdf') || !/^[^/\\\u0000-\u001f\u007f]{1,100}\.pdf$/i.test(selected.name) ||
         selected.name.includes('..') || selected.size > template.maxLength || selected.size < 5) {
       setError('Choose a PDF within the request size limit.'); setFile(null); return;
     }
-    setFile(selected); setError(''); setProgress(0);
+    setFile(selected); setUploadId(undefined); setError(''); setProgress(0);
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -72,7 +73,7 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
         if (!activeUpload) {
           if (!file) throw new Error('Choose a PDF first.');
           const result = await api<{ url: string; uploadId: string }>('portalRequestUpload', {
-            assignmentId: request.id, name: file.name, size: file.size, mime: file.type,
+            assignmentId: request.id, name: file.name, size: file.size, mime: 'application/pdf',
           });
           await new Promise<void>((resolve, reject) => {
             const upload = new XMLHttpRequest(); xhr.current = upload;
@@ -163,7 +164,7 @@ export function StaffRequests({ context, api, rows, contractorId, selectedIds = 
       {!contractorId && <div className="request-groups">{catalog.templates.map((type) => {
         const group = assignments.filter((a) => a.templateId === type.id);
         return <section key={type.id} className="request-summary"><h3>{type.label}</h3>
-          <p>{group.filter((a) => a.status === 'pending').length} pending · {group.filter((a) => a.status === 'submitted').length} submitted · {group.filter((a) => ['viewed', 'removed'].includes(a.status)).length} completed</p>
+          <p>{group.filter((a) => ['pending', 'quarantined'].includes(a.status)).length} pending · {group.filter((a) => a.status === 'submitted').length} submitted · {group.filter((a) => ['viewed', 'removed', 'deleted'].includes(a.status)).length} completed</p>
           {permissions.invitationManagement && <Button disabled={busy} onClick={() => setTemplate(type)}>Edit template</Button>}
         </section>;
       })}</div>}

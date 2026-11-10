@@ -127,7 +127,12 @@ export function createCloudRuntime({
       const upgraded = requests && await requests.cutover();
       if (op === 'portalSubmitSin' && upgraded) deny('failed-precondition', 'Use your assigned information request.');
       const result = await sin[bucketOps[op] ?? 'context'](who, data);
-      return result.kind === 'contractor' ? { ...result, requestsV2: Boolean(upgraded) } : result;
+      if (result.kind !== 'contractor') return result;
+      if (upgraded) {
+        const { bucketField, ...context } = result;
+        return { ...context, requestsV2: true };
+      }
+      return { ...result, requestsV2: false };
     }
     if (Object.hasOwn(bucketOps, op)) deny('failed-precondition');
     let policy;

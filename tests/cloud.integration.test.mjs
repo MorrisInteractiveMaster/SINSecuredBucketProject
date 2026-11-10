@@ -640,6 +640,7 @@ test('assigned requests isolate contractors and preserve independent persistent 
   const pair = await Promise.all([assign(), assign()]);
   assert.equal(pair.reduce((total, result) => total + result.created, 0), 3);
   await call(adminToken, 'portalRequestAssign', { invitationIds: [secondId], templateIds: [phone.id] });
+  assert.equal((await call(first, 'portalContext')).bucketField, undefined);
   const one = (await call(first, 'portalRequestList')).assignments;
   const two = (await call(second, 'portalRequestList')).assignments;
   assert.equal(one.length, 3); assert.equal(two.length, 1);

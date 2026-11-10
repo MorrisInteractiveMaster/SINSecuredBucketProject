@@ -78,6 +78,8 @@ gcloud storage buckets create gs://gen-lang-client-0948635471-mi-secure-bucket -
 
 gcloud storage buckets update gs://gen-lang-client-0948635471-mi-secure-bucket --default-encryption-key=APPROVED_MONTREAL_FILE_KMS_KEY
 
+gcloud storage buckets update gs://gen-lang-client-0948635471-mi-secure-bucket --cors-file=config/requests-storage-cors.json
+
 gcloud iam roles create miBucketFiles --project=gen-lang-client-0948635471 --file=iam/mi-bucket-files-role.yaml
 gcloud storage buckets add-iam-policy-binding gs://gen-lang-client-0948635471-mi-secure-bucket --member=serviceAccount:mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com --role=projects/gen-lang-client-0948635471/roles/miBucketFiles
 
