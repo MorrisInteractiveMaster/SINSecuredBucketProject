@@ -3,6 +3,8 @@ import { onRequest } from 'firebase-functions/v2/https';
 import { initializeApp, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getAuth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
+import { createRequestFiles, privateScanner } from './cloud/request-files.mjs';
 import { getAppCheck } from 'firebase-admin/app-check';
 import { createVerificationMailer, verificationMailConfig } from './cloud/verification-mail.mjs';
 import { TARGET } from './cloud/gates.mjs';
@@ -18,6 +20,7 @@ const dispatch = createCloudRuntime({
   auth: getAuth(app),
   projectId,
   credential: applicationDefault(),
+  files: createRequestFiles({ storage: getStorage(app), scanner: privateScanner() }),
   mailer: createVerificationMailer(mailConfig),
   verificationSecret: () => mailConfig()?.hmacKey,
   activation: {

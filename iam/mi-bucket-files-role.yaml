@@ -1,0 +1,8 @@
+title: MI Secure Bucket file runtime
+description: Object operations for the dedicated portal bucket only. Bind at bucket scope.
+stage: GA
+includedPermissions:
+- storage.objects.create
+- storage.objects.get
+- storage.objects.delete
+- storage.buckets.get

@@ -591,3 +591,105 @@ test('live UI operations through callable transport and named Firestore consume 
   assert.equal(audit.docs.filter((doc) => doc.data().event === 'sin_reveal_consumed').length, 4);
   assert.equal(JSON.stringify(audit.docs.map((doc) => doc.data())).includes('000000018'), false);
 });
+
+test('assigned requests isolate contractors and preserve independent persistent and one-time lifecycles', async () => {
+  const admin = 'staff@example.org';
+  const staffUid = request(adminToken).auth.uid;
+  const firstEmail = 'requests-one@gmail.com';
+  const secondEmail = 'requests-two@gmail.com';
+  const first = await token('google.com', firstEmail, 'requests-one', true);
+  const second = await token('google.com', secondEmail, 'requests-two', true);
+  const firstId = randomUUID(), secondId = randomUUID();
+  const ns = 'staffWorkspace/v1/';
+  const root = 'requestsV2/v1/';
+  await db.doc(ns + 'policy/access').set({ ...policy, version: 1, invitationImportApproved: true, privacyApprovalReference: guid });
+  await db.doc(ns + 'policy/sin-release').set({ enabled: true, approvalReference: guid,
+    kmsKey: 'projects/fictional-keys/locations/northamerica-northeast1/keyRings/fixture/cryptoKeys/fixture' });
+  await db.doc(ns + 'roles/' + staffUid).set({ active: true, tenantId: guid, objectId: guid,
+    emailKey: emailKey(admin), statusViewing: true, invitationManagement: true });
+  const legacyId = randomUUID();
+  await db.doc(ns + 'submissions/' + legacyId).set({ status: 'submitted', retrievalStatus: 'retrieved' });
+  for (const [email, invitationId] of [[firstEmail, firstId], [secondEmail, secondId]])
+    await db.doc(ns + 'allowlist/' + emailKey(email)).set({ email, invitationId, status: 'active', expiresAt: Timestamp.fromMillis(Date.now() + 3600000) });
+  let unwrapFails = false;
+  let timeline = Date.now();
+  const fileCalls = [];
+  let scanReady = false;
+  await db.doc('staffLimits/member_' + staffUid).delete();
+  const calls = createCloudRuntime({ db, auth, clock: () => timeline, projectId: 'demo-mi-sin-portal', emulator: true,
+    staffRoster: [{ key: emailKey(admin), label: 'Fictional Staff' }],
+    verifyMicrosoft: async () => ({ tenantId: guid, objectId: guid, member: true, accountEmail: admin }),
+    custody: (_, operation) => operation === 'encrypt' ? { wrap: async (key) => Buffer.from(key) } :
+      { unwrap: async (key) => { if (unwrapFails) throw new Error('fixture failure'); return Buffer.from(key); } },
+    files: {
+      validate: () => {}, upload: async () => ({ url: 'https://storage.example.org/fixture' }),
+      inspect: async () => { if (!scanReady) throw new Error('quarantine'); return { generation: '123', clean: true }; },
+      deliver: async (_, action) => { fileCalls.push(action); return { url: 'https://storage.example.org/clean' }; },
+      delete: async () => {},
+    },
+  });
+  const call = (t, operation, payload = {}) => calls(request(t, operation, payload));
+  await assert.rejects(call(first, 'portalRequestList'));
+  await db.doc(ns + 'policy/requests-v2').set({ enabled: true, approvalReference: guid, filesEnabled: true });
+  const save = (type, label, maxLength) => call(adminToken, 'portalRequestTemplate', { type, label, maxLength, instructions: 'Fictional request', status: 'active' });
+  const sin = await save('sin', 'SIN', 24), phone = await save('phone', 'Phone', 32), pdf = await save('file', 'Signed agreement', 1000);
+  const assign = () => call(adminToken, 'portalRequestAssign', { invitationIds: [firstId], templateIds: [sin.id, phone.id, pdf.id] });
+  const pair = await Promise.all([assign(), assign()]);
+  assert.equal(pair.reduce((total, result) => total + result.created, 0), 3);
+  await call(adminToken, 'portalRequestAssign', { invitationIds: [secondId], templateIds: [phone.id] });
+  const one = (await call(first, 'portalRequestList')).assignments;
+  const two = (await call(second, 'portalRequestList')).assignments;
+  assert.equal(one.length, 3); assert.equal(two.length, 1);
+  const phoneOne = one.find((a) => a.template.type === 'phone');
+  const sinOne = one.find((a) => a.template.type === 'sin');
+  const fileOne = one.find((a) => a.template.type === 'file');
+  await assert.rejects(call(second, 'portalRequestSubmit', { assignmentId: phoneOne.id, value: '3065550100' }));
+  await assert.rejects(call(second, 'portalRequestReveal', { assignmentId: phoneOne.id }));
+  await assert.rejects(call(first, 'portalSubmitSin', { value: '000000018', revision: 'initial' }));
+  await call(first, 'portalRequestSubmit', { assignmentId: phoneOne.id, value: '3065550100' });
+  assert.equal((await call(first, 'portalRequestList')).assignments.find((a) => a.id === sinOne.id).status, 'pending');
+  assert.equal(JSON.stringify((await db.doc(ns + root + 'payloads/' + phoneOne.id).get()).data()).includes('3065550100'), false);
+  for (let i = 0; i < 2; i++) assert.equal((await call(adminToken, 'portalRequestReveal', { assignmentId: phoneOne.id })).value, '3065550100');
+  assert.equal((await db.doc(ns + root + 'payloads/' + phoneOne.id).get()).exists, true);
+  await call(adminToken, 'portalRequestTemplate', { id: phone.id, type: 'phone', label: 'Updated phone label', maxLength: 20, instructions: 'New instructions', status: 'active' });
+  assert.equal((await call(first, 'portalRequestList')).assignments.find((a) => a.id === phoneOne.id).template.label, 'Phone');
+  timeline += 61000;
+  const reentered = await token('google.com', firstEmail, 'requests-one', true);
+  await assert.rejects(call(reentered, 'portalRequestSubmit', { assignmentId: sinOne.id, value: '000000019' }));
+  const submit = () => call(reentered, 'portalRequestSubmit', { assignmentId: sinOne.id, value: '000000018' });
+  assert.equal((await Promise.allSettled([submit(), submit()])).filter((r) => r.status === 'fulfilled').length, 1);
+  const reveal = () => call(adminToken, 'portalRequestReveal', { assignmentId: sinOne.id });
+  assert.equal((await Promise.allSettled([reveal(), reveal()])).filter((r) => r.status === 'fulfilled').length, 1);
+  assert.equal((await db.doc(ns + root + 'payloads/' + sinOne.id).get()).exists, false);
+  const failedType = await save('sin', 'Separate failure test', 24);
+  await call(adminToken, 'portalRequestAssign', { invitationIds: [firstId], templateIds: [failedType.id] });
+  const failed = (await call(first, 'portalRequestList')).assignments.find((a) => a.templateId === failedType.id);
+  await call(first, 'portalRequestSubmit', { assignmentId: failed.id, value: '000000026' });
+  unwrapFails = true;
+  await assert.rejects(call(adminToken, 'portalRequestReveal', { assignmentId: failed.id }));
+  unwrapFails = false;
+  await assert.rejects(call(adminToken, 'portalRequestReveal', { assignmentId: failed.id }));
+  timeline += 61000;
+  const uploadData = { assignmentId: fileOne.id, name: 'fictional.pdf', size: 50, mime: 'application/pdf' };
+  await assert.rejects(call(second, 'portalRequestUpload', uploadData));
+  const upload = await call(first, 'portalRequestUpload', uploadData);
+  await assert.rejects(call(adminToken, 'portalRequestFilePreview', { assignmentId: fileOne.id }));
+  await assert.rejects(call(first, 'portalRequestFinishUpload', { assignmentId: fileOne.id, uploadId: upload.uploadId }));
+  scanReady = true;
+  await call(first, 'portalRequestFinishUpload', { assignmentId: fileOne.id, uploadId: upload.uploadId });
+  await call(adminToken, 'portalRequestFilePreview', { assignmentId: fileOne.id });
+  await call(adminToken, 'portalRequestFileDownload', { assignmentId: fileOne.id });
+  await call(adminToken, 'portalRequestFilePreview', { assignmentId: fileOne.id });
+  assert.deepEqual(fileCalls, ['preview', 'download', 'preview']);
+  const phoneTwo = two[0];
+  await call(adminToken, 'portalRequestCancel', { assignmentId: phoneTwo.id });
+  await assert.rejects(call(second, 'portalRequestSubmit', { assignmentId: phoneTwo.id, value: '3065550100' }));
+  await assert.rejects(call(adminToken, 'portalRequestCancel', { assignmentId: phoneOne.id }));
+  const overview = await call(adminToken, 'portalRequestsOverview');
+  assert.equal(JSON.stringify(overview).includes('3065550100'), false);
+  assert.equal(JSON.stringify(overview).includes('wrappedKey'), false);
+  assert.equal((await db.doc(ns + 'submissions/' + legacyId).get()).data().retrievalStatus, 'retrieved');
+  await db.doc(ns + 'policy/requests-v2').update({ enabled: false });
+  await assert.rejects(call(first, 'portalRequestList'));
+  await assert.rejects(call(adminToken, 'portalRequestReveal', { assignmentId: phoneOne.id }));
+});

@@ -45,6 +45,7 @@ export function createOneTimeSin({ db, clock, credential, custody, kmsFetcher, m
     return result;
   };
   return {
+    mailboxVerified: (tx, who, entry) => mailbox.verified(tx, who, entry),
     enabled: async () => liveSinRelease((await releaseRef.get()).data()),
     field: async () => readField({ get: (ref) => ref.get() }),
     configure: (who, data, authorizeTx) => db.runTransaction(async (tx) => {
