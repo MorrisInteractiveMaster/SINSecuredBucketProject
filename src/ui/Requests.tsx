@@ -210,7 +210,7 @@ export function StaffRequests({ context, api, rows, contractorId, selectedIds = 
       <div className="request-card-grid">{filtered.map((assignment) => <StaffRequest key={assignment.id} assignment={assignment} api={api}
         label={contractorId ? undefined : rows.find((row) => row.invitationId === assignment.invitationId)?.name}
         canManage={Boolean(permissions.invitationManagement)} canDelete={Boolean(permissions.administratorManagement)}
-        authorizationPending={authorizationPending} refresh={refresh} />)}</div>
+        authorizationPending={authorizationPending || Boolean(error)} refresh={refresh} />)}</div>
     </>}
   </section>;
 }
@@ -252,8 +252,8 @@ function StaffRequest({ assignment, api, label, canManage, canDelete, authorizat
       }
       if (operation === 'portalRequestFilePreview') setPreview(result.url);
       if (operation === 'portalRequestFileDownload') setDownload(result.url);
-    } catch (error) { setError(message(error)); }
-    finally { setBusy(false); try { await refresh(); } catch (error) { setError(message(error)); } }
+    } catch (error) { hide(); setError(message(error)); }
+    finally { setBusy(false); try { await refresh(); } catch (error) { hide(); setError(message(error)); } }
   }
   const openable = ['submitted', 'viewed'].includes(assignment.status);
   const isFile = assignment.template.type === 'file';

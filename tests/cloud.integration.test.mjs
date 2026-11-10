@@ -633,7 +633,7 @@ test('assigned requests isolate contractors and preserve independent persistent 
   });
   const call = (t, operation, payload = {}) => calls(request(t, operation, payload));
   await assert.rejects(call(first, 'portalRequestList'));
-  await db.doc(ns + 'policy/requests-v2').set({ enabled: true, approvalReference: guid, filesEnabled: true });
+  await db.doc(ns + 'policy/requests-v2').set({ enabled: true, cutover: true, approvalReference: guid, filesEnabled: true });
   const save = (type, label, maxLength) => call(adminToken, 'portalRequestTemplate', { type, label, maxLength, instructions: 'Fictional request', status: 'active' });
   const sin = await save('sin', 'SIN', 24), phone = await save('phone', 'Phone', 32), pdf = await save('file', 'Signed agreement', 1000);
   const assign = () => call(adminToken, 'portalRequestAssign', { invitationIds: [firstId], templateIds: [sin.id, phone.id, pdf.id] });
@@ -694,5 +694,6 @@ test('assigned requests isolate contractors and preserve independent persistent 
   assert.equal((await db.doc(ns + 'submissions/' + legacyId).get()).data().retrievalStatus, 'retrieved');
   await db.doc(ns + 'policy/requests-v2').update({ enabled: false });
   await assert.rejects(call(first, 'portalRequestList'));
+  await assert.rejects(call(first, 'portalSubmitSin', { value: '000000018', revision: 'initial' }));
   await assert.rejects(call(adminToken, 'portalRequestReveal', { assignmentId: phoneOne.id }));
 });
