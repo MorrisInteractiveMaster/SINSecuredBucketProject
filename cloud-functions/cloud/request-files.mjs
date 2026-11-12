@@ -4,6 +4,8 @@ import { cryptoKeyPattern } from '../../functions/lib/kms.mjs';
 import { TARGET } from './gates.mjs';
 export const REQUEST_BUCKET = TARGET.projectId + '-mi-secure-bucket';
 const generationPattern = /^[0-9]{1,30}$/;
+const maxFileSize = 10 * 1024 * 1024;
+const uuidPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/;
 const objectPattern = /^quarantine\/[a-f0-9-]{36}\/[a-f0-9-]{36}\.pdf$/;
 
 export function createRequestFiles({ storage, clock = Date.now, scanner }) {
@@ -20,27 +22,30 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
       deny('failed-precondition', 'The private file bucket configuration requires review.');
     return current;
   }
-  function stored(file) {
-    if (!file || !objectPattern.test(file.object || '') || !generationPattern.test(file.generation || '') ||
+  function stored(file, assignmentId) {
+    if (!uuidPattern.test(assignmentId || '') || !file || !file.object?.startsWith(`quarantine/${assignmentId}/`) || !objectPattern.test(file.object || '') || !generationPattern.test(file.generation || '') ||
         !/^[a-f0-9]{64}$/.test(file.sha256 || '') || file.clean !== true ||
         file.mime !== 'application/pdf') deny('failed-precondition', 'This file is not approved.');
   }
   return {
     validate(data, maxSize) {
-      if (typeof data.name !== 'string' || /[\u0000-\u001f\u007f]/.test(data.name) || !/^[^/\\\u0000-\u001f\u007f]{1,100}\.pdf$/i.test(data.name) ||
+      if (!Number.isSafeInteger(maxSize) || maxSize < 5 || maxSize > maxFileSize || typeof data.name !== 'string' || data.name.length > 100 || /[\u0000-\u001f\u007f]/.test(data.name) || !/^[^/\\\u0000-\u001f\u007f]{1,100}\.pdf$/i.test(data.name) ||
           data.name.includes('..') || data.mime !== 'application/pdf' || !Number.isSafeInteger(data.size) ||
-          data.size < 5 || data.size > Math.min(maxSize, 10 * 1024 * 1024))
+          data.size < 5 || data.size > maxSize)
         deny('invalid-argument', 'Choose a PDF within the request size limit.');
     },
-    async upload(assignmentId, uploadId, size, policy) {
+    async upload(assignmentId, uploadId, size, policy, expiresAt) {
+      if (!Number.isSafeInteger(size) || size < 5 || size > maxFileSize ||
+          !Number.isSafeInteger(expiresAt) || expiresAt <= clock() || expiresAt > clock() + 5 * 60_000)
+        deny('failed-precondition', 'The upload reservation expired. Start a new upload.');
       const current = await bucket(policy);
       const object = `quarantine/${assignmentId}/${uploadId}.pdf`;
       if (!objectPattern.test(object)) deny();
       const [url] = await current.file(object).getSignedUrl({
-        version: 'v4', action: 'write', expires: clock() + 5 * 60_000, contentType: 'application/pdf',
+        version: 'v4', action: 'write', expires: expiresAt, contentType: 'application/pdf',
         extensionHeaders: { 'x-goog-if-generation-match': '0', 'content-length': String(size) },
       });
-      return { url, expiresAt: clock() + 5 * 60_000 };
+      return { url, expiresAt };
     },
     async inspect(assignmentId, uploadId, size, policy) {
       const current = await bucket(policy);
@@ -64,8 +69,9 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
         return { object, generation, sha256, clean: true, mime: 'application/pdf', size };
       } finally { bytes.fill(0); }
     },
-    async deliver(file, action, policy) {
-      stored(file);
+    async deliver(file, action, policy, assignmentId) {
+      stored(file, assignmentId);
+      if (!['preview', 'download'].includes(action)) deny();
       const current = await bucket(policy);
       const [url] = await current.file(file.object, { generation: file.generation }).getSignedUrl({
         version: 'v4', action: 'read', expires: clock() + 60_000,
@@ -73,8 +79,8 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
       });
       return { url, expiresAt: clock() + 60_000 };
     },
-    async delete(file, policy) {
-      stored(file);
+    async delete(file, policy, assignmentId) {
+      stored(file, assignmentId);
       const current = await bucket(policy);
       try { await current.file(file.object, { generation: file.generation }).delete({ ifGenerationMatch: file.generation }); }
       catch (error) { if (error?.code !== 404) throw new Error('File deletion unavailable'); }

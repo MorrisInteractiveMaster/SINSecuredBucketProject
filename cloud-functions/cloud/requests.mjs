@@ -71,7 +71,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
       return { assignment, envelope: sealed.data(), policy };
     });
     try {
-      const output = fileAction ? await files.deliver(result.assignment.file, fileAction, result.policy) :
+      const output = fileAction ? await files.deliver(result.assignment.file, fileAction, result.policy, assignmentId) :
         { value: await crypto.decrypt(assignmentId, result.envelope) };
       await db.runTransaction(async (tx) => {
         await gateAndAuthorize(tx, authorize);
@@ -205,7 +205,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
     async startUpload(who, data) {
       exactKeys(data, ['assignmentId', 'name', 'size', 'mime']);
       const assignmentId = id(data.assignmentId), uploadId = randomUUID();
-      const policy = await db.runTransaction(async (tx) => {
+      const reservation = await db.runTransaction(async (tx) => {
         const policy = await release(tx);
         const { assignment, doc } = await owned(tx, who, assignmentId);
         if (!['pending', 'quarantined'].includes(assignment.status)) deny('already-exists');
@@ -213,13 +213,24 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
         files.validate(data, assignment.template.maxLength);
         const previous = (await tx.get(item('uploads', assignmentId))).data();
         if (previous && previous.expiresAt.toMillis() > clock()) deny('resource-exhausted', 'An upload is already in progress. Wait before retrying.');
-        tx.set(item('uploads', assignmentId), { uploadId, uid: who.uid, size: data.size, expiresAt: Timestamp.fromMillis(clock() + 5 * 60_000) });
+        const expiresAt = clock() + 5 * 60_000;
+        tx.set(item('uploads', assignmentId), { uploadId, uid: who.uid, size: data.size, expiresAt: Timestamp.fromMillis(expiresAt) });
         tx.update(doc.ref, { status: 'quarantined' });
         audit(tx, who, assignmentId, 'request_upload_started', { invitationId: assignment.invitationId });
-        return policy;
+        return { policy, expiresAt };
       });
       // A signing failure leaves quarantine closed. A retry is allowed after expiry.
-      return { uploadId, ...await files.upload(assignmentId, uploadId, data.size, policy) };
+      const grant = await files.upload(assignmentId, uploadId, data.size, reservation.policy, reservation.expiresAt);
+      // Recheck after signing: revocation/cancellation or a replaced lease must not
+      // return a URL. Previously issued URLs remain bounded bearer capabilities.
+      await db.runTransaction(async (tx) => {
+        const policy = await release(tx);
+        const { assignment } = await owned(tx, who, assignmentId);
+        const upload = (await tx.get(item('uploads', assignmentId))).data();
+        if (policy.filesEnabled !== true || assignment.status !== 'quarantined' || upload?.uploadId !== uploadId ||
+            upload.uid !== who.uid || !upload.expiresAt || upload.expiresAt.toMillis() <= clock()) deny('failed-precondition');
+      });
+      return { uploadId, ...grant };
     },
     async finishUpload(who, data) {
       exactKeys(data, ['assignmentId', 'uploadId']);
@@ -231,7 +242,8 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
         if (!files || policy.filesEnabled !== true || assignment.template.type !== 'file' ||
             !upload || upload.uploadId !== uploadId || upload.uid !== who.uid) deny();
         if (['submitted', 'viewed'].includes(assignment.status)) return { complete: true };
-        if (assignment.status !== 'quarantined') deny('failed-precondition');
+        if (assignment.status !== 'quarantined' || !upload.expiresAt || upload.expiresAt.toMillis() <= clock())
+          deny('failed-precondition', 'The upload reservation expired or is no longer active.');
         return { policy, upload };
       });
       if (result.complete) return { accepted: true };
@@ -244,7 +256,8 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
         const upload = (await tx.get(item('uploads', assignmentId))).data();
         if (policy.filesEnabled !== true || upload?.uploadId !== uploadId || upload.uid !== who.uid) deny();
         if (['submitted', 'viewed'].includes(assignment.status)) return;
-        if (assignment.status !== 'quarantined') deny();
+        if (assignment.status !== 'quarantined' || !upload.expiresAt || upload.expiresAt.toMillis() <= clock())
+          deny('failed-precondition', 'The upload reservation expired or is no longer active.');
         tx.update(doc.ref, { status: 'submitted', submittedAt: at(), file });
         audit(tx, who, assignmentId, 'request_file_accepted', { invitationId: assignment.invitationId });
       });
@@ -266,7 +279,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
         return { file: assignment.file, policy };
       });
       if (result.complete) return { deleted: true };
-      await files.delete(result.file, result.policy);
+      await files.delete(result.file, result.policy, assignmentId);
       await db.runTransaction(async (tx) => {
         await gateAndAuthorize(tx, authorize);
         const doc = item('assignments', assignmentId), assignment = (await tx.get(doc)).data();
