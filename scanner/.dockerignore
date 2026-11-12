@@ -1,0 +1,13 @@
+*
+!Dockerfile
+!requirements.lock
+!freshclam.conf
+!core.py
+!pdf_check.py
+!service.py
+!render_config.py
+!run-service.template.yaml
+!tests/
+!tests/**
+
+**/__pycache__/

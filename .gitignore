@@ -21,3 +21,4 @@ functions/.runtime/
 dist-cloud-test/
 .firebaserc
 operator-input*.json
+.scanner-release/

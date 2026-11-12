@@ -2846,3 +2846,33 @@ th {
   border-bottom: 1px solid #725239;
   font-size: 13px;
 }
+
+.requests-home {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 56px 24px;
+}
+.requests-home h1 { font-size: clamp(28px, 5vw, 42px); margin-bottom: 16px; }
+.requests-home > p { color: var(--muted); margin-bottom: 24px; }
+.request-card-grid, .request-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 20px; }
+.request-card, .request-summary { padding: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.request-card-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 16px; }
+.request-card h2 { font-size: 22px; }
+.request-card h3 { font-size: 18px; }
+.request-card p { color: var(--muted); margin: 12px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.request-card textarea, .requests-workspace textarea, .requests-workspace select[multiple] { min-height: 96px; }
+.request-card input, .request-card textarea, .requests-workspace input, .requests-workspace textarea, .requests-workspace select { width: 100%; padding: 12px; background: var(--elevated); color: var(--text); border: 1px solid #737373; border-radius: 6px; }
+.request-card .field-label > span { color: var(--muted); font-size: 12px; }
+.request-card form, .requests-workspace form { display: grid; gap: 16px; }
+.request-dropzone { display: grid; place-items: center; min-height: 150px; padding: 20px; border: 1px dashed #a1969d; border-radius: 8px; background: #262126; color: var(--text); gap: 12px; overflow-wrap: anywhere; }
+.request-dropzone:focus-within { outline: 2px solid var(--teal); outline-offset: 4px; }
+.request-dropzone input { max-width: 100%; }
+.request-card progress { width: 100%; accent-color: var(--murrey); }
+.request-card iframe { width: 100%; min-height: 320px; border: 1px solid var(--border); background: #fff; }
+.requests-workspace { padding: 24px; }
+.requests-workspace > h2 { margin-bottom: 24px; }
+.requests-workspace details { margin: 20px 0; padding: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; }
+.requests-workspace summary { cursor: pointer; font-size: 16px; padding-bottom: 16px; }
+.request-filters, .request-actions { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0; }
+.request-filters label { display: flex; gap: 8px; align-items: center; }
+@media (max-width: 600px) { .requests-home { padding: 30px 16px; } .request-card { padding: 20px; } .requests-workspace { padding: 16px; } .request-card-heading { flex-wrap: wrap; } }

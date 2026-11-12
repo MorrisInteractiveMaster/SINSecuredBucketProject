@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { api, logout } from '../../src/app/client';
 import App from '../../src/ui/App';
 import { authorizationFailure } from '../../src/app/session';
@@ -25,7 +25,9 @@ async function open() {
   request.mockResolvedValue(portalContext);
   const app = render(<App />);
   fireEvent.click(screen.getByRole('button', { name: /MI staff access/ }));
-  fireEvent.click(await screen.findByRole('button', { name: /Continue with Microsoft/ }));
+  const login = await screen.findByRole('button', { name: /Continue with Microsoft/ });
+  await waitFor(() => expect(login).toBeEnabled());
+  fireEvent.click(login);
   await screen.findByRole('heading', { name: 'Staff dashboard' });
   vi.useFakeTimers();
   // Restart the session under fake timers so the first poll is deterministic.

@@ -1,0 +1,5 @@
+title: MI Secure Bucket Scanner Reader
+description: Read exact object generations in only the dedicated portal bucket; no list, write, delete or IAM permissions.
+stage: GA
+includedPermissions:
+  - storage.objects.get
