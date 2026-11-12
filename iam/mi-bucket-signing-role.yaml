@@ -1,0 +1,5 @@
+title: MI Secure Bucket URL signer
+description: Keyless signing only. Bind on the dedicated runtime service account only.
+stage: GA
+includedPermissions:
+- iam.serviceAccounts.signBlob

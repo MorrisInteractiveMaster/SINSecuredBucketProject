@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://mi-sin-portal.web.app"],
+    "method": ["GET", "HEAD", "PUT"],
+    "responseHeader": ["Content-Type", "x-goog-if-generation-match", "x-goog-generation"],
+    "maxAgeSeconds": 600
+  }
+]

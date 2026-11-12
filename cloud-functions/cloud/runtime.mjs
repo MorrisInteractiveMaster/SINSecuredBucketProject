@@ -22,6 +22,7 @@ import {
 import { createSetup } from './setup.mjs';
 import { isInitialOwnerEmail } from '../../functions/lib/admin-roster.mjs';
 import { createStaffWorkspace, staffScope } from './staff.mjs';
+import { createRequests } from './requests.mjs';
 import { createOneTimeSin } from './one-time-sin.mjs';
 import { getPortalIdentity } from './identity.mjs';
 const OPERATIONS = [
@@ -30,6 +31,9 @@ const OPERATIONS = [
   'portalImportAllowlist',
   'portalListContractors',
   'portalSubmit', 'portalSubmitSin', 'portalBucketReveal', 'portalBucketSendCode', 'portalBucketVerifyCode', 'portalBucketConfigure',
+  'portalRequestsOverview', 'portalRequestTemplate', 'portalRequestAssign', 'portalRequestCancel',
+  'portalRequestList', 'portalRequestSubmit', 'portalRequestReveal', 'portalRequestUpload', 'portalRequestFinishUpload',
+  'portalRequestFilePreview', 'portalRequestFileDownload', 'portalRequestFileDelete',
   'portalRequestCorrection',
   'portalOverview',
   'portalActivity',
@@ -50,12 +54,14 @@ export function createCloudRuntime({
   mailer,
   verificationSecret,
   staffRoster,
+  files,
   clock = Date.now,
   verifyMicrosoft = verifyOrganizationalAssertion,
 }) {
   const setup = createSetup({ db, clock, projectId, emulator, config: activation, verifyMicrosoft });
   const sin = credential || custody ? createOneTimeSin({ db: staffScope(db), clock, credential, custody, kmsFetcher, mailer, verificationSecret }) : undefined;
-  const staff = createStaffWorkspace({ db, clock, verifyMicrosoft, sin, roster: staffRoster });
+  const requests = sin ? createRequests({ db: staffScope(db), clock, legacy: sin, credential, custody, kmsFetcher, files }) : undefined;
+  const staff = createStaffWorkspace({ db, clock, verifyMicrosoft, sin, requests, roster: staffRoster });
   return async function dispatch(request) {
     exactKeys(request.data, ['operation', 'payload', 'microsoftIdToken']);
     if (!OPERATIONS.includes(request.data.operation))
@@ -103,13 +109,30 @@ export function createCloudRuntime({
     const staffActor = await staff.resolve(who, request.data.microsoftIdToken, op,
       () => enforceRequestBudget(db, 'staffLimits', 'member_' + who.uid, clock));
     if (staffActor) return staff.dispatch(staffActor, op, data);
+    const assignedOperations = { portalRequestList: 'list', portalRequestSubmit: 'submit',
+      portalRequestUpload: 'startUpload', portalRequestFinishUpload: 'finishUpload' };
+    if (Object.hasOwn(assignedOperations, op)) {
+      if (!requests) deny('failed-precondition');
+      await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
+      return requests[assignedOperations[op]](who, data);
+    }
+    if (['portalRequestsOverview', 'portalRequestTemplate', 'portalRequestAssign', 'portalRequestCancel',
+      'portalRequestReveal', 'portalRequestFilePreview', 'portalRequestFileDownload', 'portalRequestFileDelete'].includes(op)) deny();
     if (op === 'portalBucketReveal' || op === 'portalBucketConfigure') deny();
     const bucketOps = {
       portalSubmitSin: 'submit', portalBucketSendCode: 'issueCode', portalBucketVerifyCode: 'verifyCode',
     };
     if (sin && (Object.hasOwn(bucketOps, op) || (op === 'portalContext' && await sin.enabled()))) {
       await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
-      return sin[bucketOps[op] ?? 'context'](who, data);
+      const upgraded = requests && await requests.cutover();
+      if (op === 'portalSubmitSin' && upgraded) deny('failed-precondition', 'Use your assigned information request.');
+      const result = await sin[bucketOps[op] ?? 'context'](who, data);
+      if (result.kind !== 'contractor') return result;
+      if (upgraded) {
+        const { bucketField, ...context } = result;
+        return { ...context, requestsV2: true };
+      }
+      return { ...result, requestsV2: false };
     }
     if (Object.hasOwn(bucketOps, op)) deny('failed-precondition');
     let policy;

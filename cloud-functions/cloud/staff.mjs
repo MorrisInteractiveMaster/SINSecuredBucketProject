@@ -26,7 +26,7 @@ export function validStaffPolicy(policy) {
     policy.disposalEnabled === false;
 }
 
-export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = initialRoster, sin }) {
+export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = initialRoster, sin, requests }) {
   const scoped = staffScope(db);
   const policyRef = scoped.doc('policy/access');
   const roleRef = (uid) => scoped.doc('roles/' + uid);
@@ -117,7 +117,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
       exactKeys(data, []);
       const { role, policy } = await authorize(who, 'statusViewing');
       return {
-        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), bucketField: await sin?.field(), uid: who.uid, displayLabel: role.displayLabel,
+        kind: 'admin', workspace: 'staff', liveSin: Boolean(await sin?.enabled()), requestsV2: Boolean(await requests?.cutover()), bucketField: await sin?.field(), uid: who.uid, displayLabel: role.displayLabel,
         permissions: {
           ...Object.fromEntries(staffPermissions.map((permission) => [permission,
             role[permission] === true && (permission !== 'invitationManagement' || (policy.invitationImportApproved === true && staffGuid.test(policy.privacyApprovalReference || ''))),
@@ -126,6 +126,19 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
         },
       };
     }
+    const requestOperations = {
+      portalRequestsOverview: ['admin', 'statusViewing'], portalRequestTemplate: ['template', 'invitationManagement'],
+      portalRequestAssign: ['assign', 'invitationManagement'], portalRequestCancel: ['cancel', 'invitationManagement'],
+      portalRequestReveal: ['reveal', 'statusViewing'], portalRequestFileDelete: ['deleteFile', 'invitationManagement'],
+    };
+    if (requests && Object.hasOwn(requestOperations, op)) {
+      if (op === 'portalRequestFileDelete' && emailKey(who.email) !== initialOwnerKey) deny();
+      const [handler, permission] = requestOperations[op];
+      return requests[handler](who, data, (tx) => authorizeTx(tx, who, permission));
+    }
+    if (requests && ['portalRequestFilePreview', 'portalRequestFileDownload'].includes(op))
+      return requests.file(who, data, (tx) => authorizeTx(tx, who, 'statusViewing'),
+        op === 'portalRequestFilePreview' ? 'preview' : 'download');
     if (op === 'portalBucketConfigure' && sin)
       return sin.configure(who, data, (tx) => authorizeTx(tx, who, 'invitationManagement'));
     if (op === 'portalBucketReveal' && sin) {
