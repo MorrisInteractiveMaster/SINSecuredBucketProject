@@ -139,3 +139,8 @@ Release remains blocked pending operator-approved setup and actual-cloud verific
 Signed URLs are bearer capabilities: GCS does not re-run Firebase assignment checks on PUT/GET. The issuance and finalization checks are the authorization boundary. Anyone holding an already issued URL can use its exact capability until expiry; revocation cannot instantly cancel a prior lease. An expired or cancelled attempt may leave a quarantined orphan requiring the reviewed cleanup process; it cannot be finalized or read by contractors. Soft-delete/version/backups and copies already downloaded remain subject to separately approved retention. The scan service and real cloud endpoint tests are outstanding release blockers, not claims of completed live security verification.
 
 References: [Firebase scoped deploy targets](https://firebase.google.com/docs/cli/targets), [GCS signed URL bearer semantics](https://cloud.google.com/storage/docs/access-control/signed-urls), [GCS canonical requests](https://cloud.google.com/storage/docs/authentication/canonical-requests).
+
+
+## Private scanner implementation follow-up
+
+The separate stacked scanner PR supplies the private ClamAV/libqpdf service, finite timeout/retry integration and dedicated service-account/network setup. See [private scanner operator runbook](private-pdf-scanner.md). It does not enable files or replace the actual-cloud release checks above. The prior five-second scanner-client and 15-second Function timeouts are superseded only when that follow-up revision is reviewed and deployed. Existing PR 5 and PR 6 remain unchanged.

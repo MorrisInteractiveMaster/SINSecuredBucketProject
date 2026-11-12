@@ -47,7 +47,8 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
       });
       return { url, expiresAt };
     },
-    async inspect(assignmentId, uploadId, size, policy) {
+    async inspect(assignmentId, uploadId, size, policy, expiresAt) {
+      if (!Number.isSafeInteger(expiresAt) || expiresAt <= clock()) deny('failed-precondition', 'Upload reservation expired.');
       const current = await bucket(policy);
       const object = `quarantine/${assignmentId}/${uploadId}.pdf`;
       if (!objectPattern.test(object)) deny();
@@ -60,7 +61,7 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
       try {
         if (bytes.length !== size || bytes.subarray(0, 5).toString('ascii') !== '%PDF-') deny('invalid-argument');
         const sha256 = createHash('sha256').update(bytes).digest('hex');
-        const verdict = await scanner({ bucket: REQUEST_BUCKET, object, generation, sha256 }, policy);
+        const verdict = await scanner({ bucket: REQUEST_BUCKET, object, generation, sha256 }, policy, { deadline: expiresAt });
         if (verdict?.clean !== true || verdict.bucket !== REQUEST_BUCKET || verdict.object !== object ||
             verdict.generation !== generation || verdict.sha256 !== sha256 ||
             typeof verdict.engine !== 'string' || !verdict.engine || verdict.engine.length > 80 ||
@@ -88,23 +89,55 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
   };
 }
 
-// The operator must deploy and independently validate this private scanner service.
-// It must download the exact generation, run an approved PDF validator and current
-// malware engine, and return the bound verdict. No user-facing API accepts verdicts.
-export function privateScanner(fetcher = fetch) {
-  return async (file, policy) => {
-    if (typeof policy.scannerUrl !== 'string' || !/^https:\/\/[a-z0-9-]+\.a\.run\.app$/.test(policy.scannerUrl))
-      throw new Error('Scanner configuration unavailable');
+// Private Cloud Run IAM and internal ingress protect the scanner. Retries are
+// bounded, read-only and never consume/extend an assignment's upload lease.
+export function privateScanner(fetcher = fetch, { clock = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
+  return async (file, policy, { deadline } = {}) => {
+    if (typeof policy.scannerUrl !== 'string' || !/^https:\/\/[a-z0-9-]+\.a\.run\.app$/.test(policy.scannerUrl) ||
+        !Number.isSafeInteger(deadline) || deadline - clock() <= 2000)
+      throw new Error('Scanner configuration or lease unavailable');
+    const end = Math.min(clock() + 60_000, deadline - 1000);
     const identity = await fetcher('http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=' +
       encodeURIComponent(policy.scannerUrl), {
-      headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(2000), redirect: 'error',
+      headers: { 'Metadata-Flavor': 'Google' }, signal: AbortSignal.timeout(Math.max(1, Math.min(2000, end - clock()))), redirect: 'error',
     });
     if (!identity.ok) throw new Error('Scanner identity unavailable');
     const token = await identity.text();
-    const result = await fetcher(policy.scannerUrl + '/scan', { method: 'POST',
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify(file), signal: AbortSignal.timeout(5000), redirect: 'error' });
-    if (!result.ok) throw new Error('Scanner unavailable');
-    return result.json();
+    if (token.length > 16384) throw new Error('Scanner identity unavailable');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const remaining = end - clock();
+      if (remaining <= 1000) break;
+      let result;
+      try {
+        result = await fetcher(policy.scannerUrl + '/scan', { method: 'POST',
+          headers: { Authorization: 'Bearer ' + token, 'X-Serverless-Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'X-MI-Scan-Deadline': String(deadline) },
+          body: JSON.stringify(file), signal: AbortSignal.timeout(remaining), redirect: 'error' });
+      } catch {
+        if (attempt === 0 && end - clock() > 5000) { await sleep(500); continue; }
+        break;
+      }
+      if (result.ok) {
+        if (clock() >= end) break;
+        // Bound response size and JSON parsing inside the same abort deadline.
+        const reader = result.body?.getReader();
+        if (!reader) throw new Error('Scanner verdict unavailable');
+        const chunks = []; let size = 0;
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            size += value.length;
+            if (size > 4096 || clock() >= end) throw new Error();
+            chunks.push(value);
+          }
+          return JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        } catch { throw new Error('Scanner verdict unavailable'); }
+        finally { await reader.cancel().catch(() => {}); }
+      }
+      await result.body?.cancel().catch(() => {});
+      if (attempt !== 0 || ![429, 502, 503, 504].includes(result.status) || end - clock() <= 5000) break;
+      await sleep(500);
+    }
+    throw new Error('Scanner unavailable. The file remains quarantined.');
   };
 }

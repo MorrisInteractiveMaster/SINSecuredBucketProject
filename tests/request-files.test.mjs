@@ -32,7 +32,7 @@ test('file adapter binds upload size, create-only generation, private Canadian C
   files.validate({ name: 'fictional.pdf', size, mime: 'application/pdf' }, 1000);
   await files.upload(assignmentId, uploadId, size, policy, 1300000);
   assert.deepEqual(state.calls[0].config.extensionHeaders, { 'x-goog-if-generation-match': '0', 'content-length': String(size) });
-  const file = await files.inspect(assignmentId, uploadId, size, policy);
+  const file = await files.inspect(assignmentId, uploadId, size, policy, 1300000);
   assert.equal(file.clean, true);
   await files.deliver(file, 'preview', policy, assignmentId);
   await files.deliver(file, 'download', policy, assignmentId);
@@ -47,11 +47,11 @@ test('file adapter binds upload size, create-only generation, private Canadian C
 test('unscanned, infected, stale, mismatched or unavailable files cannot be delivered', async () => {
   for (const verdict of [{ clean: false }, { generation: '124' }, { sha256: 'bad' }, { definitionsAt: -86400001 }]) {
     const { files, state, size } = fixture(); state.verdict = verdict;
-    await assert.rejects(files.inspect(assignmentId, uploadId, size, policy));
+    await assert.rejects(files.inspect(assignmentId, uploadId, size, policy, 1300000));
   }
   const { files, state, size } = fixture();
   state.failScan = true;
-  await assert.rejects(files.inspect(assignmentId, uploadId, size, policy));
+  await assert.rejects(files.inspect(assignmentId, uploadId, size, policy, 1300000));
   await assert.rejects(files.deliver({ object: 'quarantine/x', generation: '123' }, 'preview', policy, assignmentId));
   await assert.rejects(files.upload(assignmentId, uploadId, size, { ...policy, filesEnabled: false }, 1300000));
   await assert.rejects(files.upload(assignmentId, uploadId, size, { ...policy, storageBucket: 'unrelated-app' }, 1300000));
@@ -65,7 +65,7 @@ test('unsafe names, wrong MIME, oversize objects and false content metadata are 
   assert.throws(() => files.validate({ name: 'fictional.pdf', size: 1001, mime: 'application/pdf' }, 1000));
   assert.throws(() => files.validate({ name: 'fictional.pdf', size, mime: 'text/html' }, 1000));
   state.metadata.size = size + 1;
-  await assert.rejects(files.inspect(assignmentId, uploadId, size, policy));
+  await assert.rejects(files.inspect(assignmentId, uploadId, size, policy, 1300000));
 });
 test('request snapshots validate phone and text without changing SIN rules', () => {
   assert.equal(validRequestTemplate({ type: 'phone', label: 'Phone', instructions: '', status: 'active', maxLength: 32 }), true);
@@ -111,7 +111,7 @@ test('expired or extended grants, malformed limits and cross-assignment file poi
     assert.throws(() => files.validate({ name: 'fictional.pdf', size, mime: 'application/pdf' }, limit));
   assert.throws(() => files.validate({ name: 'x'.repeat(100) + '.pdf', size, mime: 'application/pdf' }, 1000));
   await assert.rejects(files.upload(assignmentId, uploadId, 10 * 1024 * 1024 + 1, policy, 1300000));
-  const file = await files.inspect(assignmentId, uploadId, size, policy);
+  const file = await files.inspect(assignmentId, uploadId, size, policy, 1300000);
   await assert.rejects(files.deliver(file, 'preview', policy, uploadId));
   await assert.rejects(files.delete(file, policy, uploadId));
   assert.equal(state.calls.length, 0);
@@ -149,4 +149,43 @@ test('real GCS V4 signatures bind exact path, length, expiry and create-only pre
   assert.equal(valid(url.pathname, size, '123'), false, 'cannot remove the create-only precondition to overwrite');
   assert.equal(valid(url.pathname, size, '0', canonicalQuery.replace(/X-Goog-Expires=[0-9]+/, 'X-Goog-Expires=9999')), false);
   // Actual GCS 403-after-expiry and 412-on-overwrite remain release smoke tests.
+});
+
+test('private scanner retries only transient failures within the existing lease and verifies bounded responses', async () => {
+  const { privateScanner } = await import('../cloud-functions/cloud/request-files.mjs');
+  let now = 1000000, calls = 0, mode = 'transient';
+  const fetcher = async (url, config) => {
+    if (url.startsWith('http://metadata.google.internal/')) return new Response('fictional-token');
+    calls++;
+    assert.equal(config.headers['X-MI-Scan-Deadline'], '1100000');
+    assert.equal(config.headers['X-Serverless-Authorization'], config.headers.Authorization);
+    assert.equal(config.redirect, 'error');
+    if (mode === 'transient' && calls === 1) return new Response('', { status: 503 });
+    if (mode === 'denied') return new Response('', { status: 403 });
+    if (mode === 'timeout') { now += 60001; throw new Error('network'); }
+    if (mode === 'oversize') return new Response('x'.repeat(4097));
+    return new Response(JSON.stringify({ clean: true }));
+  };
+  const scanner = privateScanner(fetcher, { clock: () => now, sleep: async (ms) => { now += ms; } });
+  const p = { scannerUrl: 'https://mi-scanner-fictional-nn.a.run.app' };
+  assert.deepEqual(await scanner({}, p, { deadline: 1100000 }), { clean: true });
+  assert.equal(calls, 2);
+  for (const failure of ['denied', 'timeout', 'oversize']) {
+    now = 1000000; calls = 0; mode = failure;
+    await assert.rejects(scanner({}, p, { deadline: 1100000 }));
+    assert.equal(calls, 1);
+  }
+  calls = 0;
+  await assert.rejects(scanner({}, p, { deadline: now }));
+  await assert.rejects(scanner({}, { scannerUrl: 'http://unrelated.example.org' }, { deadline: 1100000 }));
+  assert.equal(calls, 0);
+});
+
+test('scanner networking remains scoped to the dedicated project, region and connector', async () => {
+  const { scannerNetworkOptions } = await import('../cloud-functions/cloud/scanner-config.mjs');
+  assert.deepEqual(scannerNetworkOptions(), {});
+  const connector = 'projects/gen-lang-client-0948635471/locations/northamerica-northeast1/connectors/mi-bucket-scanner';
+  assert.deepEqual(scannerNetworkOptions(connector), { vpcConnector: connector, vpcConnectorEgressSettings: 'ALL_TRAFFIC' });
+  for (const invalid of ['default', connector + '\n', connector.replace('mi-bucket-scanner', 'ai-studio'), connector.replace('northamerica-northeast1', 'us-central1'), connector.replace('gen-lang-client-0948635471', 'unrelated')])
+    assert.throws(() => scannerNetworkOptions(invalid));
 });

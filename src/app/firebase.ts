@@ -110,6 +110,7 @@ export async function api<T = any>(
     : await httpsCallable(
         functions,
         'miSinSynthetic',
+        name === 'portalRequestFinishUpload' ? { timeout: 100_000 } : undefined,
       )({
         operation: name,
         payload: data,
