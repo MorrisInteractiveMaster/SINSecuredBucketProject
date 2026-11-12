@@ -315,13 +315,14 @@ test('sensitive retrieval remains blocked and audit fields contain no request pa
   await db.doc('roles/mi-admin').update({ sensitiveRetrieval: true });
   await bad(service.sensitive(admin()), 'failed-precondition');
   const events = await db.collection('auditEvents').get();
-  for (const e of events.docs)
-    assert.deepEqual(Object.keys(e.data()).sort(), [
-      'actorUid',
-      'at',
-      'event',
-      'invitationId',
-    ]);
+  for (const e of events.docs) {
+    const fields = ['actorUid', 'at', 'event', 'invitationId'];
+    if (e.data().event === 'contractor_access_reviewed') fields.push('action', 'count', 'reviewId');
+    if (e.data().event === 'contractor_access_restored') fields.push('reviewId', 'previousStatus', 'previousExpiry', 'newExpiry');
+    assert.deepEqual(Object.keys(e.data()).sort(), fields.sort());
+    for (const secret of ['000000018', 'ciphertext', 'access_token', 'contractor@example.com'])
+      assert.equal(JSON.stringify(e.data()).includes(secret), false);
+  }
 });
 function jwt(payload) {
   return `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.`;
