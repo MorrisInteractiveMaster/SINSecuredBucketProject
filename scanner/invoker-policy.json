@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "bindings": [{
+    "role": "roles/run.invoker",
+    "members": ["serviceAccount:mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com"]
+  }]
+}

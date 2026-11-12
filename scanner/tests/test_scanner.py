@@ -215,7 +215,7 @@ class ManifestTests(unittest.TestCase):
         data = {'image': 'northamerica-northeast1-docker.pkg.dev/' + PROJECT + '/mi-secure-bucket/pdf-scanner@sha256:' + 'a' * 64,
                 'runtimeSubject': '123456789012345678901', 'filesKey': KEY, 'scannerOrigin': 'https://fixture-nn.a.run.app'}
         manifest = render(data)
-        for expected in ['run.googleapis.com/ingress: internal', 'containerConcurrency: 1', "maxScale: '1'", 'mi-bucket-scanner@' + PROJECT, 'request-files', 'timeoutSeconds: 60']:
+        for expected in ["run.googleapis.com/ingress: all", "run.googleapis.com/invoker-iam-disabled: 'false'", 'containerConcurrency: 1', "maxScale: '1'", 'mi-bucket-scanner@' + PROJECT, 'request-files', 'timeoutSeconds: 60']:
             self.assertIn(expected, manifest)
         for key, value in [('image', data['image'].replace(PROJECT, 'unrelated')), ('filesKey', KEY.replace('request-files', 'text-keys')), ('scannerOrigin', 'https://public.example.org'), ('runtimeSubject', 'email@example.org')]:
             with self.assertRaises(ValueError): render({**data, key: value})

@@ -7,7 +7,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { createRequestFiles, privateScanner } from './cloud/request-files.mjs';
 import { getAppCheck } from 'firebase-admin/app-check';
 import { createVerificationMailer, verificationMailConfig } from './cloud/verification-mail.mjs';
-import { scannerNetworkOptions } from './cloud/scanner-config.mjs';
+import { RESET_VALUE } from 'firebase-functions/v2/options';
 import { TARGET } from './cloud/gates.mjs';
 import { createTransportHandler } from './cloud/transport.mjs';
 import { createCloudRuntime } from './cloud/runtime.mjs';
@@ -42,7 +42,9 @@ export const miSinSynthetic = onRequest(
     cpu: 'gcf_gen1',
     memory: '256MiB',
     timeoutSeconds: 90,
-    ...scannerNetworkOptions(process.env.MI_PDF_SCANNER_CONNECTOR),
+    // Source-owned reset: the portal uses ordinary authenticated HTTPS egress.
+    // Future Firebase deployments must not retain a stale VPC/connector setting.
+    networkInterface: RESET_VALUE,
     invoker: 'public',
     cors: [
       'https://mi-sin-portal.web.app',

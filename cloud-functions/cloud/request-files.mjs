@@ -89,7 +89,7 @@ export function createRequestFiles({ storage, clock = Date.now, scanner }) {
   };
 }
 
-// Private Cloud Run IAM and internal ingress protect the scanner. Retries are
+// Cloud Run IAM and strict caller-token validation protect the HTTPS scanner. Retries are
 // bounded, read-only and never consume/extend an assignment's upload lease.
 export function privateScanner(fetcher = fetch, { clock = Date.now, sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)) } = {}) {
   return async (file, policy, { deadline } = {}) => {

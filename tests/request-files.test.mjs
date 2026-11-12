@@ -181,11 +181,17 @@ test('private scanner retries only transient failures within the existing lease 
   assert.equal(calls, 0);
 });
 
-test('scanner networking remains scoped to the dedicated project, region and connector', async () => {
-  const { scannerNetworkOptions } = await import('../cloud-functions/cloud/scanner-config.mjs');
-  assert.deepEqual(scannerNetworkOptions(), {});
-  const connector = 'projects/gen-lang-client-0948635471/locations/northamerica-northeast1/connectors/mi-bucket-scanner';
-  assert.deepEqual(scannerNetworkOptions(connector), { vpcConnector: connector, vpcConnectorEgressSettings: 'ALL_TRAFFIC' });
-  for (const invalid of ['default', connector + '\n', connector.replace('mi-bucket-scanner', 'ai-studio'), connector.replace('northamerica-northeast1', 'us-central1'), connector.replace('gen-lang-client-0948635471', 'unrelated')])
-    assert.throws(() => scannerNetworkOptions(invalid));
+test('scanner HTTPS ingress requires IAM, one exact invoker and no portal VPC configuration', async () => {
+  const { readFileSync } = await import('node:fs');
+  const template = readFileSync('scanner/run-service.template.yaml', 'utf8');
+  assert.match(template, /run\.googleapis\.com\/ingress: all/);
+  assert.match(template, /run\.googleapis\.com\/invoker-iam-disabled: 'false'/);
+  assert.doesNotMatch(template, /vpc-access|network-interfaces|connector/);
+  assert.deepEqual(JSON.parse(readFileSync('scanner/invoker-policy.json')), {
+    version: 1, bindings: [{ role: 'roles/run.invoker', members: ['serviceAccount:mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com'] }],
+  });
+  const endpoint = readFileSync('cloud-functions/index.mjs', 'utf8');
+  assert.match(endpoint, /networkInterface: RESET_VALUE/);
+  assert.match(endpoint, /timeoutSeconds: 90/);
+  assert.doesNotMatch(endpoint, /vpcConnector|vpcEgress|scannerNetworkOptions/);
 });

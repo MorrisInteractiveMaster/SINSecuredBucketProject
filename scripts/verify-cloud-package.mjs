@@ -6,4 +6,6 @@ const functions=await import('../.deploy/functions/index.mjs');
 assert.deepEqual(Object.keys(functions),['miSinSynthetic']);
 const endpoint=functions.miSinSynthetic.__endpoint;
 assert.equal(endpoint.platform,'gcfv2');assert.equal(endpoint.availableMemoryMb,256);assert.equal(endpoint.maxInstances,1);assert.equal(endpoint.minInstances,0);assert.equal(endpoint.concurrency,1);assert.equal(endpoint.serviceAccountEmail,'mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com');
-console.log('PASS: isolated deploy package loads in Node 22 with one bounded Gen 2 HTTPS endpoint and dedicated runtime SA. No cloud invocation.');
+assert.equal(endpoint.timeoutSeconds,90);
+assert.equal(JSON.parse(JSON.stringify(endpoint)).vpc,null,'Firebase manifest must explicitly clear any connector or Direct VPC configuration');
+console.log('PASS: isolated deploy package loads in Node 22 with one bounded Gen 2 HTTPS endpoint dedicated runtime SA, 90-second timeout and explicit VPC reset. No cloud invocation.');

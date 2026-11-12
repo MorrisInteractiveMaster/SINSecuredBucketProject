@@ -1,12 +1,26 @@
-# Private PDF scanner — operator review and release runbook
+# IAM-authenticated PDF scanner — deployment checklist and runbook
 
 This branch stacks on PR 6, which stacks on PR 5. It does not modify either branch, deploy anything, enable files, migrate records or create resources. The existing bucket **already exists**: `gen-lang-client-0948635471-mi-secure-bucket`, Montreal (`northamerica-northeast1`), with its separate `request-files` CMEK. Do not recreate or repurpose it. Live configuration and live scanner operation have not been independently verified by this development environment.
+
+## Short deployment checklist
+
+After recorded deployment approval, in this order:
+
+1. Keep `filesEnabled:false`; inspect the existing private bucket/CMEK and save current dedicated Function/Hosting/scanner revisions.
+2. Build, test and review the scanner image; push its immutable digest using section 1.
+3. Configure the dedicated scanner account with bucket-only object-get access using section 2. Keep the existing portal storage/signing permissions unchanged.
+4. Render and deploy **only** `mi-secure-pdf-scanner` using section 4: HTTPS ingress `all`, Invoker IAM check enabled, and the exact portal-only policy in `scanner/invoker-policy.json`. Discover the actual service URL and runtime subject automatically. Never grant `allUsers` or `allAuthenticatedUsers` access.
+5. Deploy the 90-second dedicated Function through the existing scoped Firebase launcher, then review/publish only the dedicated Hosting update if needed (section 5). No connector, private DNS, VPC, NAT, staff UID collection or network input file is required.
+6. Run fictional live acceptance tests in section 6: anonymous/wrong identities denied, approved portal call succeeds, clean PDF accepted, EICAR/malformed/stale/mismatched/expired cases stay quarantined, and existing sign-in/email/App Check/SIN workflows remain intact.
+7. Record live results and obtain the separate file-release approval. This PR does not authorize file activation. Keep uploads disabled until live tests pass and required approval is recorded.
+
+All commands below are operator instructions, **not executed by this PR**. Do not create/recreate the existing bucket, alter shared settings, or deploy other functions/sites.
 
 ## Security boundary
 
 The portal still authenticates Microsoft/Google contractors, establishes mailbox ownership, checks active contractor approval and the exact active file assignment before signing and finalizing uploads. Phone/SIN-only assignments cannot upload. Neither scanner nor client can accept an assignment, change a clean verdict in Firestore, list files or bypass quarantine. The scanner receives only `{bucket,object,generation,sha256}` plus the backend's absolute lease deadline header. It never trusts an email supplied by a caller.
 
-`mi-secure-pdf-scanner` is a new **private internal-ingress** Cloud Run service in this project and region. Only `mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com` receives service-level `roles/run.invoker`. Application code additionally verifies the complete Google-signed ID token, issuer, exact audience, email verification, exact service-account email and its automatically discovered numeric subject. The subject is a service identity, not a staff UID. End-user Microsoft/Google/Firebase tokens cannot invoke the scanner. Both auth headers carry the same short-lived metadata-issued token; Cloud Run checks `X-Serverless-Authorization` while the application verifies the intact `Authorization` token. No keys are downloaded.
+`mi-secure-pdf-scanner` is a new **IAM-authenticated HTTPS** Cloud Run service in this project and region. Its HTTPS endpoint is network reachable (`ingress: all`), while `run.googleapis.com/invoker-iam-disabled: 'false'` explicitly requires Cloud Run IAM authentication. Reachability does not grant invocation. Only `mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com` receives service-level `roles/run.invoker`. Application code additionally verifies the complete Google-signed ID token, issuer, exact audience, email verification, exact service-account email and its automatically discovered numeric subject. The subject is a service identity, not a staff UID. End-user Microsoft/Google/Firebase tokens cannot invoke the scanner. Both auth headers carry the same short-lived metadata-issued token; Cloud Run checks `X-Serverless-Authorization` while the application verifies the intact `Authorization` token. No keys are downloaded.
 
 A separate `mi-bucket-scanner` service account gets **only `storage.objects.get` on this bucket**, through `iam/mi-bucket-scanner-reader-role.yaml`. No list, create, overwrite, delete, Firestore, signBlob, text-key decryption or cross-project grants. Storage's existing service agent handles the bucket CMEK; the scanner does not receive direct KMS permissions. Audit effective inherited grants and who can impersonate these identities. Project/IAM administrators remain trusted operators; application checks cannot eliminate their infrastructure control.
 
@@ -55,7 +69,6 @@ gcloud run services list --region=northamerica-northeast1 --project=gen-lang-cli
 
 gcloud artifacts repositories list --location=northamerica-northeast1 --project=gen-lang-client-0948635471
 
-gcloud compute networks vpc-access connectors list --region=northamerica-northeast1 --project=gen-lang-client-0948635471
 ```
 
 Verify bucket location, uniform IAM, public-access prevention, default key ending `/cryptoKeys/request-files`, Canadian key location, retention/soft-delete policy and direct Firebase endpoint denial. **Do not recreate, rotate or change this existing key or bucket as part of scanner installation.** Inspect the current service/account/custom-role names below; if already present, stop and review instead of recreating/overwriting them. API enablement, build registry, identity creation and networking below are approval-dependent; no service activation/billing is done by tests or source preparation.
@@ -107,29 +120,15 @@ gcloud storage buckets add-iam-policy-binding gs://gen-lang-client-0948635471-mi
 
 No project-level role binding, KMS grant to the scanner, object listing or service-account key is required. The deployer needs approved `actAs` on this scanner identity; do not grant it to contractors. Check inherited project/folder roles and service-account impersonators before proceeding.
 
-## 3. Internal network path — mandatory release dependency
+## 3. Standard authenticated HTTPS — no VPC setup
 
-`internal` ingress plus IAM is deliberate. A Gen 2 Function does not become internal merely by sharing the project; the caller must route traffic through an accepted VPC path with Private Google Access. The existing default portal Function has no such assumed path. **Do not change ingress to `all` to make the scanner work.**
+The portal calls the scanner's normal HTTPS `a.run.app` origin with a short-lived metadata-issued Google identity token. Cloud Run enforces service-level IAM, and the existing scanner independently verifies the signed token, exact audience, issuer, verified service-account email and pinned numeric subject. Do not disable either check. Do not grant anonymous invocation.
 
-The supplied Firebase deployment option accepts only a dedicated connector named `mi-bucket-*` in this project/Montreal and sets **ALL_TRAFFIC**. This also affects the portal's existing Microsoft key retrieval, Google APIs and verification email delivery. A network operator must approve a dedicated connector/network with Private Google Access and tested NAT/internet egress for those existing dependencies. Never reuse or edit AI Studio networking. Do not guess a free CIDR or alter shared firewall/DNS routes.
+No Direct VPC egress, connector, Private Google Access change, private DNS, subnet or Cloud NAT is required. The default VPC and its `10.162.0.0/20` subnet are untouched. Existing Microsoft/Google authentication, Resend verification email, App Check and Google APIs keep ordinary internet/Google HTTPS egress. The scanner can fetch official antivirus updates without a customer VPC/NAT.
 
-If an approved dedicated connector already exists, inspect it and its actual subnet:
+The Firebase-owned Function source explicitly resets VPC configuration with the supported SDK `networkInterface: RESET_VALUE`; deployment-package checks verify the emitted `vpc:null` reset and 90-second timeout. Therefore future **scoped Firebase deployments** keep the reviewed no-VPC configuration rather than retaining an external network patch. Do not run a separate `gcloud functions deploy` or patch the Firebase-managed Cloud Run service. The old `MI_STAGE_SCANNER_NETWORK`, `MI_PDF_SCANNER_CONNECTOR` and ignored connector-input file are obsolete; unset those environment variables and do not stage the old input. The preparer rejects obsolete staging flags. No live setting is changed during local preparation or tests.
 
-```sh
-gcloud compute networks vpc-access connectors describe mi-bucket-scanner --region=northamerica-northeast1 --project=gen-lang-client-0948635471 --format=json
-```
-
-If none exists, networking is a **genuine release blocker** requiring a reviewed project-specific network/CIDR/NAT plan. The release cannot safely invent those inputs or silently create them. Use the official private-networking/VPC connector guidance linked below, with a network administrator. Record the actual approved connector resource, Private Google Access configuration, NAT egress and expected fixed charges. Before finalizing the portal Function configuration, test Microsoft/Google sign-in, mailbox verification delivery, App Check and other Google APIs over this route with fictional accounts. Shared AI Studio configuration must remain unchanged.
-
-Create ignored `operator-input.scanner-network.json` with exactly the approved connector:
-
-```json
-{"connector":"projects/gen-lang-client-0948635471/locations/northamerica-northeast1/connectors/mi-bucket-scanner"}
-```
-
-Do not run the deployment below until that resource exists and the route is validated. The name is a proposed dedicated connector, not a claim of live existence.
-
-## 4. Private Cloud Run service deployment and caller binding
+## 4. Authenticated Cloud Run service deployment and caller binding
 
 Create ignored `operator-input.pdf-scanner.json` with keys `image`, `runtimeSubject`, `filesKey`, `scannerOrigin`. The subject and existing key are discovered automatically; staff never collect UIDs/OIDs. Set `SCANNER_IMAGE_DIGEST` to the exact approved digest printed above, then:
 
@@ -150,7 +149,7 @@ PY
 python3 scanner/render_config.py operator-input.pdf-scanner.json
 ```
 
-Review `.scanner-release/service.yaml`: exact service/account/project/region, internal ingress, no public invocation, concurrency/max instances one, min zero, immutable image, 4 GiB, two CPUs, startup probe. `UNCONFIGURED` is an initial **closed** audience used only to discover the actual generated service origin. It always rejects scans and does not enable any portal feature. No invoker binding is added until the real origin is configured.
+Review `.scanner-release/service.yaml`: exact service/account/project/region, HTTPS ingress `all`, Invoker IAM check enabled (`invoker-iam-disabled:'false'`), no unauthenticated invocation, concurrency/max instances one, min zero, immutable image, 4 GiB, two CPUs, startup probe. `UNCONFIGURED` is an initial **closed** audience used only to discover the actual generated service origin. It always rejects scans and does not enable any portal feature. No invoker binding is added until the real origin is configured.
 
 ```sh
 gcloud run services replace .scanner-release/service.yaml --project=gen-lang-client-0948635471 --region=northamerica-northeast1
@@ -165,26 +164,27 @@ PY
 python3 scanner/render_config.py operator-input.pdf-scanner.json
 gcloud run services replace .scanner-release/service.yaml --project=gen-lang-client-0948635471 --region=northamerica-northeast1
 
-gcloud run services add-iam-policy-binding mi-secure-pdf-scanner --project=gen-lang-client-0948635471 --region=northamerica-northeast1 --member=serviceAccount:mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com --role=roles/run.invoker
+gcloud run services set-iam-policy mi-secure-pdf-scanner scanner/invoker-policy.json --project=gen-lang-client-0948635471 --region=northamerica-northeast1
 
 gcloud run services get-iam-policy mi-secure-pdf-scanner --project=gen-lang-client-0948635471 --region=northamerica-northeast1 --format=json > .scanner-release/scanner-iam.json
 ```
 
-Verify only that portal identity is an invoker, with no `allUsers`, `allAuthenticatedUsers`, other accounts, inherited broad invocation or unapproved token creators. Do not disable the Invoker IAM check. Application verification additionally pins the portal numeric subject, rejecting replacement service identities until an explicit reviewed configuration update. Keep the generated `a.run.app` origin; custom domains/public proxy paths are unsupported. Service deletion/recreation/URL changes require updated audience and backend policy, never a permissive fallback.
+The reviewed policy file replaces only the dedicated scanner service policy with one `roles/run.invoker` member: the existing portal runtime. It never edits project IAM. A newly created service starts with no anonymous invoker binding; YAML replacement does not grant one. If a service with this name already exists, inspect its policy and ownership before applying; stop rather than overwriting unrelated resources. Verify the Invoker IAM check is enabled and only that portal identity is a service-level invoker, with no `allUsers`, `allAuthenticatedUsers`, other accounts, inherited broad invocation or unapproved token creators. Do not disable the Invoker IAM check. Service IAM cannot revoke inherited project/folder permissions. If another identity has effective invocation through inherited roles, stop for review; do not modify shared IAM as a workaround. The scanner application still rejects all identities except the pinned portal runtime. Project administrators remain trusted infrastructure operators. Application verification additionally pins the portal numeric subject, rejecting replacement service identities until an explicit reviewed configuration update. Keep the generated `a.run.app` origin; custom domains/public proxy paths are unsupported. Service deletion/recreation/URL changes require updated audience and backend policy, never a permissive fallback.
 
 ## 5. Scoped portal integration (keep files disabled)
 
-After network, financial, security and privacy review, deploy only the existing dedicated callable. The scanner timeout changes are required; deploying only the scanner leaves the old five-second client timeout. Check existing owner activation/environment settings against the recorded current revision; do not unintentionally reapply old activation configuration.
+After financial, security and privacy review, deploy only the existing dedicated callable. The scanner timeout changes are required; deploying only the scanner leaves the old five-second client timeout. Check existing owner activation/environment settings against the recorded current revision; do not unintentionally reapply old activation configuration.
 
 ```sh
 npm ci --ignore-scripts
 npm run test:all
 npm run build:cloud-test
 node scripts/check-ui-artifact.mjs
-MI_STAGE_SCANNER_NETWORK=1 node scripts/launch-cloud-test.mjs functions --execute
+unset MI_STAGE_SCANNER_NETWORK MI_PDF_SCANNER_CONNECTOR
+node scripts/launch-cloud-test.mjs functions --execute
 ```
 
-The opt-in preparer validates the ignored connector input and stages only `MI_PDF_SCANNER_CONNECTOR` for the existing dedicated Function. It does not create networks or change shared project settings. Verify the deployed Function timeout is 90 seconds and its network settings match the reviewed connector/all-traffic path. If existing provider/email dependencies fail, keep files disabled and use rollback below; do not weaken auth or internal ingress.
+The normal launcher stages the existing dedicated Function only; no scanner-network input is required. Verify the deployed Function timeout is 90 seconds and there is no VPC connector or Direct VPC interface. The Firebase manifest explicitly clears stale VPC settings. Keep the existing runtime identity, secret references, App Check, auth and database/Hosting targets unchanged. If existing dependencies fail, keep files disabled and roll back the dedicated revision; do not weaken authentication.
 
 Hosting needs a scoped update for the file-finalization callable timeout only, using the already reviewed cloud build and existing dedicated site:
 
@@ -200,13 +200,13 @@ The scanner URL/key stay in the existing private request-policy configuration; n
 
 Record image/revisions, policies, clean/error categories and opaque fictional test references, never tokens, signed URLs, file content, copied secrets or actual contractor details. These checks have not been performed by this PR:
 
-- Confirm unauthenticated **and authenticated internet-origin** requests cannot reach `/scan` under internal ingress. From the approved internal route, wrong Google/Microsoft/Firebase identities and a non-portal service identity must fail. Use an approved test runner/identity; do not grant new production invokers merely to make a smoke test pass or give Cloud Shell standing permission to impersonate the portal.
+- Confirm an anonymous HTTPS request to `/scan` receives Cloud Run authentication denial (normally HTTP 403), not a clean verdict. Requests using wrong Google/Microsoft/Firebase identities and a non-portal service identity must fail. A permitted portal-runtime request must pass both Cloud Run IAM and the strict application verifier. Use an approved test runner/identity; do not grant new production invokers merely to make a smoke test pass or give Cloud Shell standing permission to impersonate the portal.
 - Through the actual portal and dedicated Function, use two fictional contractors: one with an active file assignment, one with phone/SIN only. The latter cannot obtain a PUT URL even when modifying assignment IDs. Check missing/expired mailbox proof, inactive approval, revoked identity, cancellation, replaced invitation and cross-contractor attempts. Existing Auth/Firestore tests cover this locally but cannot establish live IAM or networking.
 - Upload a benign static PDF to the exact assigned reservation and generation; require a matching clean verdict, accepted submission and repeated staff preview/download. Viewing must not delete. Verify plaintext/content absence from metadata output and logs. Direct Firebase operations remain denied.
 - Upload the standard harmless EICAR fixture under PDF metadata: it must never become accepted (a non-PDF is rejected before AV). Also use a fictional valid PDF with EICAR as an embedded attachment: AV/structure policy must reject it. Independently run the image's vendor-DB engine smoke tests as above, which prove a clean PDF passes AV and the official standard EICAR bytes are detected. A rejected non-PDF alone does not prove antivirus detection.
 - Test malformed/truncated PDFs, warnings, encrypted files, scripts, attachments, decompression limits, oversize content, wrong key, generation/hash mismatches, object replacement, stale/missing definitions, engine failures, scanner outage and request deadlines. Do not deliberately break the live scanner for real users; use a separate approved validation revision with no production traffic, then restore the reviewed digest. Never expose test hooks in production.
 - Demonstrate invalid/altered/expired signed PUT rejection at GCS, overwrite generation-zero rejection, two simultaneous starts/finalizations, lease expiry during a scan and loss of the clean response. Scanner failures remain quarantined; finalization retries are idempotent; expiry requires a new reservation. Do not silently accept an old scan result for a new generation.
-- Measure warm/cold startup, signature update latency, full 10 MiB PDF scan latency and memory at the configured two CPUs/4 GiB. Confirm the 45/55/60/90/100-second budgets work, session refresh remains stable, and mailbox/sign-in dependencies work over the all-traffic VPC path.
+- Measure warm/cold startup, signature update latency, full 10 MiB PDF scan latency and memory at the configured two CPUs/4 GiB. Confirm the 45/55/60/90/100-second budgets work, session refresh remains stable, and mailbox/sign-in/App Check dependencies keep working with ordinary egress.
 - Independently check the unrelated AI Studio app with its approved smoke procedure. This PR neither changes nor claims to have validated its actual cloud revision.
 
 Only after documented actual-cloud results and independent review should the owner separately authorize the existing file-release operation. No real sensitive submission is needed to validate the scanner. Do not treat passing CI or a clean antivirus result as regulatory/security sign-off.
@@ -215,7 +215,7 @@ Only after documented actual-cloud results and independent review should the own
 
 This cannot promise CAD $0. Cloud Run free usage is shared at billing-account level, not an additional private allowance for this service; Canada/network/CMEK/image storage/build/logging charges can apply. Instance-based billing includes startup and idle lifetime until scale-down. Max one/min zero limits ordinary scale but **is not a hard billing cap**, and temporary overlapping revisions/instances can occur during deployment.
 
-Use the actual Montreal rates from Google's calculator and billing account: `2 × billed_seconds × CPU_rate + 4 × billed_seconds × GiB_rate`, plus startup boost, same-region GCS reads/KMS, internet definition downloads, Artifact Registry storage/builds, logs and connector/NAT charges. At the published illustrative Tier-1 instance rates USD $0.000018/vCPU-second and $0.000002/GiB-second, 15 minutes at 2 CPU/4 GiB is about USD $0.040 before allowances, regional differences, networking, CAD conversion and tax. A continuously running min-one instance would be about USD $116/month for compute/memory alone at those illustrative rates. **VPC connector VMs and Cloud NAT can incur ongoing charges even when scanner min instances is zero**. Inspect actual project usage and approve those fixed components before provisioning. Alerts are notifications, not spending caps. If those costs are unacceptable, do not enable the scanner or make it public as a workaround.
+Use the actual Montreal rates from Google's calculator and billing account: `2 × billed_seconds × CPU_rate + 4 × billed_seconds × GiB_rate`, plus startup boost, same-region GCS reads/KMS, internet definition downloads, Artifact Registry storage/builds, and logs. At the published illustrative Tier-1 instance rates USD $0.000018/vCPU-second and $0.000002/GiB-second, 15 minutes at 2 CPU/4 GiB is about USD $0.040 before allowances, regional differences, networking, CAD conversion and tax. A continuously running min-one instance would be about USD $116/month for compute/memory alone at those illustrative rates. **No paid connector, private DNS zone, custom VPC/subnet or Cloud NAT is part of this design.** Inspect actual project usage and approve scanner compute, storage/build and network-transfer exposure before deployment. Alerts are notifications, not spending caps. Do not enable anonymous invocation to bypass errors.
 
 Monitor scanner 4xx/5xx counts, definition age and update failures, OOM/worker timeouts and request latency without payload logging. Rebuild/scan the image regularly for OS, engine, parser and Python fixes; keep support/definition dates in the release record. Do not suppress stale-definition errors, increase file/decompression limits casually, disable malware detection or accept `clean` from a client.
 
@@ -233,20 +233,20 @@ If the scanner must be isolated while investigating, remove **only** its caller 
 gcloud run services remove-iam-policy-binding mi-secure-pdf-scanner --project=gen-lang-client-0948635471 --region=northamerica-northeast1 --member=serviceAccount:mi-sin-cloud-test@gen-lang-client-0948635471.iam.gserviceaccount.com --role=roles/run.invoker
 ```
 
-For a portal networking regression, restore the recorded **dedicated** Function revision/configuration or deploy the reviewed previous commit with its previous connector setting using the scoped Functions launcher. Because the preparer omits scanner env when not requested, confirm the old deployed environment and any connector configuration are actually restored; simply omitting an environment variable is not evidence of removal. Do not manually change the underlying Cloud Run service of the Gen 2 Function behind Firebase's deployment tooling. Restore only the recorded portal Hosting version if required. Keep file gates closed until the prior revision's scanning/compatibility is reviewed. Do not roll back the database, shared Auth, other buckets, key versions or AI Studio resources. No destructive infrastructure cleanup is part of rollback; approve it separately after confirming dependencies and retention obligations.
+For a portal regression, restore only the recorded dedicated Function source/configuration through the existing scoped Firebase launcher; do not patch the underlying Cloud Run service or use a parallel Function deployment command. Keep authentication, runtime identity and release gates intact. A rollback must preserve the reviewed no-VPC reset and 90-second scanner timeout unless the scanner remains closed under a separately reviewed rollback. Restore only the recorded portal Hosting version if required. Keep file gates closed until compatibility is verified. Do not roll back the database, shared Auth, other buckets, key versions or AI Studio resources. No destructive infrastructure cleanup is part of rollback; approve it separately after confirming dependencies and retention obligations.
 
 ## Evidence and references
 
-Development evidence (12 November 2026): 18 Python tests passed, including real ClamAV 1.4.3 with freshly downloaded/tested official main/daily/bytecode databases, clean PDF and standard EICAR detection; real libqpdf rejection tests; real Google JWT verifier tests with ephemeral test certificates; and scoped manifest/HTTP/reader failure tests. Also passed: 9 Auth/Firestore integration tests, 9 file/migration/signature/client-network tests, 31 UI tests, 15 release checks, 20 existing identity/workflow tests, 3 routing tests, TypeScript/Vite build, structural isolation checks and Node 22 deploy-package discovery. The hash-locked Python dependency audit reported no known vulnerabilities. OS/container vulnerability review remains a separate release check. No real cloud identity, object, database or endpoint was invoked. Local container building is unavailable in this workspace; Docker image construction and required real-engine tests are separately exercised in the scanner CI and must be checked before release. Actual-cloud IAM/routing/CMEK tests remain outstanding.
+Development evidence (12 November 2026): 18 Python tests passed, including real ClamAV 1.4.3 with freshly downloaded/tested official main/daily/bytecode databases, clean PDF and standard EICAR detection; real libqpdf rejection tests; real Google JWT verifier tests with ephemeral test certificates; and scoped manifest/HTTP/reader failure tests. Also passed: 9 Auth/Firestore integration tests, 9 file/migration/signature/client-network tests, 31 UI tests, 15 release checks, 20 existing identity/workflow tests, 3 routing tests, TypeScript/Vite build, structural isolation checks and Node 22 deploy-package discovery. The hash-locked Python dependency audit reported no known vulnerabilities. OS/container vulnerability review remains a separate release check. No real cloud identity, object, database or endpoint was invoked. Local container building is unavailable in this workspace; Docker image construction and required real-engine tests are separately exercised in the scanner CI and must be checked before release. Actual-cloud IAM/authenticated-HTTPS/CMEK tests remain outstanding.
 
-Local Python tests exercise real libqpdf parsing, HTTP/identity policy, deadline/resource failures, exact-generation reader checks and real ClamAV (isolated EICAR signature and vendor definitions); they do not prove Cloud Run IAM, cloud KMS, private routing or actual upload policy. Existing Auth/Firestore integration tests continue to enforce cross-contractor isolation and SIN one-time behavior. The new scanner CI builds a digest-resolved image and **requires** real engine and vendor-definition smoke tests offline; missing/stale definitions fail, never skip, in that stage. Dependency hashes bind installed Python packages; a successful image build is not independent production approval.
+Local Python tests exercise real libqpdf parsing, HTTP/identity policy, deadline/resource failures, exact-generation reader checks and real ClamAV (isolated EICAR signature and vendor definitions); they do not prove Cloud Run IAM, cloud KMS, authenticated HTTPS invocation or actual upload policy. Existing Auth/Firestore integration tests continue to enforce cross-contractor isolation and SIN one-time behavior. The new scanner CI builds a digest-resolved image and **requires** real engine and vendor-definition smoke tests offline; missing/stale definitions fail, never skip, in that stage. Dependency hashes bind installed Python packages; a successful image build is not independent production approval.
 
 - [ClamAV scanning and exit semantics](https://docs.clamav.net/manual/Usage/Scanning.html)
 - [ClamAV supported LTS lifecycle](https://docs.clamav.net/faq/faq-eol.html)
 - [FreshClam configuration and signature validation](https://docs.clamav.net/manual/Usage/Configuration.html)
 - [pikepdf structure validation](https://pikepdf.readthedocs.io/en/stable/api/main.html)
 - [Cloud Run service authentication and headers](https://cloud.google.com/run/docs/authenticating/service-to-service)
-- [Cloud Run private networking](https://cloud.google.com/run/docs/securing/private-networking)
+- [Cloud Run IAM and the Invoker check](https://cloud.google.com/run/docs/securing/managing-access)
 - [Cloud Run startup health checks](https://cloud.google.com/run/docs/configuring/healthchecks)
 - [Cloud Run pricing](https://cloud.google.com/run/pricing)
 - [Firebase callable client timeout](https://firebase.google.com/docs/functions/callable)
