@@ -7,6 +7,7 @@ export type Context = {
   kind: 'admin' | 'contractor';
   workspace?: 'staff';
   liveSin?: boolean;
+  requestsV2?: boolean;
   bucketField?: BucketField;
   uid?: string;
   displayLabel?: string;

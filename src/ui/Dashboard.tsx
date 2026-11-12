@@ -1,3 +1,4 @@
+import { StaffRequests } from './Requests';
 import { AdministratorAccess } from './AdministratorAccess';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
@@ -108,6 +109,7 @@ export default function Dashboard({
     [addName, setAddName] = useState(''),
     [addEmail, setAddEmail] = useState('');
   const permissions = context.permissions || {};
+  const [requestProgress, setRequestProgress] = useState<Record<string, string>>({});
   const [bucketField, setBucketField] = useState(context.bucketField);
   const [fieldSaving, setFieldSaving] = useState(false);
   const [revealed, setRevealed] = useState('');
@@ -220,6 +222,17 @@ export default function Dashboard({
     setError('');
     try {
       const fresh = await api<Overview>('portalOverview');
+      if (context.requestsV2) {
+        const summary = await api<{ assignments: { invitationId: string; status: string }[] }>('portalRequestsOverview');
+        const progress: Record<string, string> = {};
+        for (const row of fresh.rows) {
+          const assigned = summary.assignments.filter((assignment) => assignment.invitationId === row.invitationId);
+          const pending = assigned.filter((assignment) => ['pending', 'quarantined'].includes(assignment.status)).length;
+          const received = assigned.filter((assignment) => ['submitted', 'viewed', 'removed'].includes(assignment.status)).length;
+          progress[row.invitationId] = assigned.length ? `${received} received · ${pending} pending` : 'No assigned requests';
+        }
+        setRequestProgress(progress);
+      }
       setData(fresh);
       setDrawer((old) =>
         old
@@ -551,6 +564,7 @@ export default function Dashboard({
           {[
             ['overview', 'grid', 'Overview'],
             ['contractors', 'people', 'Contractors'],
+            ...(context.requestsV2 ? [['requests', 'file', 'Information requests']] : []),
             ['activity', 'activity', 'Activity'],
             ['security', 'shield', 'Security & handling'],
           ].map(([key, icon, label]) => (
@@ -621,7 +635,7 @@ export default function Dashboard({
               <Icon name="lock" size={13} />
               Restricted workspace
             </span>
-            <span className="test-label">{context.workspace === 'staff' ? 'COLLECTION CLOSED' : 'SYNTHETIC TEST'}</span>
+            <span className="test-label">{context.requestsV2 ? 'INFORMATION REQUESTS' : context.liveSin ? 'SECURE COLLECTION' : context.workspace === 'staff' ? 'COLLECTION CLOSED' : 'SYNTHETIC TEST'}</span>
           </div>
         </header>
         <main id="dashboard-main" className="dashboard-main">
@@ -633,6 +647,8 @@ export default function Dashboard({
                   ? 'A clear view of every invitation.'
                   : tab === 'contractors'
                     ? 'Contractor workspace.'
+                    : tab === 'requests'
+                      ? 'Information requests.'
                     : tab === 'activity'
                       ? 'Every action, accounted for.'
                       : 'Built around careful handling.'}
@@ -962,6 +978,7 @@ export default function Dashboard({
                         >
                           Export selected
                         </Button>
+                        {context.requestsV2 && <Button onClick={() => setTab('requests')}>Add requests to selected</Button>}
                         <Button
                           title="Assign these records to the signed-in administrator"
                           disabled={
@@ -1045,7 +1062,7 @@ export default function Dashboard({
                                 />
                               </th>
                               {columns.map((field) => {
-                                const label = META_COLUMNS.find(([key]) => key === field)?.[1];
+                                const label = context.requestsV2 && field === 'submissionStatus' ? 'Legacy submission status' : META_COLUMNS.find(([key]) => key === field)?.[1];
                                 return <th key={field}
                                   aria-sort={sort === field ? direction === 'asc' ? 'ascending' : 'descending' : undefined}>
                                   <div className="tracker-column-heading">
@@ -1059,6 +1076,7 @@ export default function Dashboard({
                                   </div>
                                 </th>;
                               })}
+                              {context.requestsV2 && <th>Assigned requests</th>}
                               <th>Actions</th>
                             </tr>
                           </thead>
@@ -1093,6 +1111,7 @@ export default function Dashboard({
                                 {columns.map((field) => (
                                   <td key={field}>{cell(row, field)}</td>
                                 ))}
+                                {context.requestsV2 && <td>{requestProgress[row.invitationId]}</td>}
                                 <td>
                                   <Button
                                     icon="chevron"
@@ -1177,6 +1196,8 @@ export default function Dashboard({
                     </div>
                   </section>
                 )}
+                {tab === 'requests' && context.requestsV2 && <StaffRequests context={context} api={api} rows={data.rows}
+                  selectedIds={selected} authorizationPending={authorizationPending} />}
                 {tab === 'activity' && (
                   <section className="data-panel">
                     <div className="panel-heading">
@@ -1356,7 +1377,7 @@ export default function Dashboard({
                 )}
                 {tab === 'security' && (
                   <div className="security-grid">
-                    {bucketField && permissions.invitationManagement && <section className="data-panel security-card">
+                    {bucketField && !context.requestsV2 && permissions.invitationManagement && <section className="data-panel security-card">
                       <h2>Requested information</h2>
                       <form onSubmit={(event) => {
                         event.preventDefault();
@@ -1557,6 +1578,8 @@ export default function Dashboard({
                 Revoke invitation
               </Button>
             </div>
+            {context.requestsV2 && <StaffRequests context={context} api={api} rows={data?.rows ?? []}
+              contractorId={drawer.invitationId} authorizationPending={authorizationPending} />}
             <h3>Record activity</h3>
             {permissions.auditViewing ? (
               <>
