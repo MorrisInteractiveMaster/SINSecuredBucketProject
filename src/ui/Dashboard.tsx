@@ -1,4 +1,4 @@
-import { StaffRequests } from './Requests';
+import { ContractorsWorkspace } from './ContractorsWorkspace';
 import { AdministratorAccess } from './AdministratorAccess';
 import React, { useEffect, useMemo, useState, useRef } from 'react';
 import {
@@ -42,7 +42,7 @@ const metricList = [
   ['retrieved', 'Retrieved', 'eye'],
   ['transferred', 'Transferred', 'arrow'],
   ['disposed', 'Disposed', 'burn'],
-  ['revoked', 'Revoked / invalid', 'alert'],
+  ['revoked', 'Revoked', 'alert'],
   ['attention', 'Needs attention', 'alert'],
 ] as const;
 export default function Dashboard({
@@ -64,7 +64,7 @@ export default function Dashboard({
     [loading, setLoading] = useState(true),
     [error, setError] = useState(''),
     [busy, setBusy] = useState(false),
-    [tab, setTab] = useState('overview'),
+    [tab, setTab] = useState(context.requestsV2 ? 'contractors' : 'overview'),
     [mobile, setMobile] = useState(false);
   const [filter, setFilter] = useState<Record<string, string>>({
       search: '',
@@ -222,17 +222,6 @@ export default function Dashboard({
     setError('');
     try {
       const fresh = await api<Overview>('portalOverview');
-      if (context.requestsV2) {
-        const summary = await api<{ assignments: { invitationId: string; status: string }[] }>('portalRequestsOverview');
-        const progress: Record<string, string> = {};
-        for (const row of fresh.rows) {
-          const assigned = summary.assignments.filter((assignment) => assignment.invitationId === row.invitationId);
-          const pending = assigned.filter((assignment) => ['pending', 'quarantined'].includes(assignment.status)).length;
-          const received = assigned.filter((assignment) => ['submitted', 'viewed', 'removed'].includes(assignment.status)).length;
-          progress[row.invitationId] = assigned.length ? `${received} received · ${pending} pending` : 'No assigned requests';
-        }
-        setRequestProgress(progress);
-      }
       setData(fresh);
       setDrawer((old) =>
         old
@@ -563,8 +552,7 @@ export default function Dashboard({
         <nav aria-label="Administration">
           {[
             ['overview', 'grid', 'Overview'],
-            ['contractors', 'people', 'Contractors'],
-            ...(context.requestsV2 ? [['requests', 'file', 'Information requests']] : []),
+            ['contractors', 'people', context.requestsV2 ? 'Contractors & requests' : 'Contractors'],
             ['activity', 'activity', 'Activity'],
             ['security', 'shield', 'Security & handling'],
           ].map(([key, icon, label]) => (
@@ -646,7 +634,7 @@ export default function Dashboard({
                 {tab === 'overview'
                   ? 'A clear view of every invitation.'
                   : tab === 'contractors'
-                    ? 'Contractor workspace.'
+                    ? context.requestsV2 ? 'Contractors & requests.' : 'Contractor workspace.'
                     : tab === 'requests'
                       ? 'Information requests.'
                     : tab === 'activity'
@@ -671,7 +659,7 @@ export default function Dashboard({
               >
                 Refresh
               </Button>
-              <Button
+              {!context.requestsV2 && <Button
                 kind="primary"
                 icon="plus"
                 title={
@@ -687,7 +675,7 @@ export default function Dashboard({
                 }}
               >
                 Add contractor
-              </Button>
+              </Button>}
             </div>
           </div>
           {error ? (
@@ -782,7 +770,7 @@ export default function Dashboard({
                     </div>
                   </>
                 )}
-                {(tab === 'overview' || tab === 'contractors') && (
+                {!context.requestsV2 && (tab === 'overview' || tab === 'contractors') && (
                   <section className="data-panel">
                     <div className="panel-heading">
                       <div>
@@ -1196,8 +1184,9 @@ export default function Dashboard({
                     </div>
                   </section>
                 )}
-                {tab === 'requests' && context.requestsV2 && <StaffRequests context={context} api={api} rows={data.rows}
-                  selectedIds={selected} authorizationPending={authorizationPending} />}
+                {(tab === 'contractors' || tab === 'overview') && context.requestsV2 && <ContractorsWorkspace context={context} api={api} rows={data.rows}
+                  refreshRows={() => load()} authorizationPending={authorizationPending} openLegacy={openRow}
+                  copyMetadata={(ids) => void copy('selected', ids)} exportMetadata={(ids) => { setSelected(ids); setOutputScope('selected'); setExportFields(columns); setDialog({ kind: 'export' }); }} />}
                 {tab === 'activity' && (
                   <section className="data-panel">
                     <div className="panel-heading">
@@ -1578,8 +1567,7 @@ export default function Dashboard({
                 Revoke invitation
               </Button>
             </div>
-            {context.requestsV2 && <StaffRequests context={context} api={api} rows={data?.rows ?? []}
-              contractorId={drawer.invitationId} authorizationPending={authorizationPending} />}
+            {context.requestsV2 && <p>Manage this contractor’s assigned information and access in Contractors &amp; requests.</p>}
             <h3>Record activity</h3>
             {permissions.auditViewing ? (
               <>

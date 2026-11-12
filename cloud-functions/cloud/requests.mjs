@@ -1,6 +1,8 @@
 import { randomUUID, createHash } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
 import { deny, emailKey, checkFresh, normalizeSin } from '../../functions/lib/security.mjs';
+import { normalizeEmail, emailLocalPart } from '../../functions/lib/csv.mjs';
+import { invitationExpiry } from './contractors.mjs';
 import { validRequestTemplate, validRequestValue } from '../../functions/lib/request-types.mjs';
 import { exactKeys } from './gates.mjs';
 import { liveSinRelease } from './one-time-sin.mjs';
@@ -132,6 +134,53 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
         return { id: templateId, ...saved };
       });
     },
+    async createContractor(who, data, authorize) {
+      exactKeys(data, ['name', 'email', 'expiresAt', 'templateIds', 'rows']);
+      if (data.rows && Object.keys(data).length !== 1) deny('invalid-argument');
+      const input = data.rows ?? [data];
+      if (!Array.isArray(input) || !input.length || input.length > 25) deny('invalid-argument', 'Add 1–25 contractors per batch.', 'contractor-manage');
+      const rows = input.map((row) => {
+        exactKeys(row, ['name', 'email', 'expiresAt', 'templateIds']);
+        let email;
+        try { email = normalizeEmail(row.email); } catch { deny('invalid-argument', 'Enter a valid contractor email.', 'contractor-manage'); }
+        if (row.name !== undefined && (typeof row.name !== 'string' || row.name.length > 100 || /[\x00-\x1f]/.test(row.name)))
+          deny('invalid-argument', 'Use a name of at most 100 characters.', 'contractor-manage');
+        if (!Array.isArray(row.templateIds) || !row.templateIds.length || row.templateIds.length > 50 || new Set(row.templateIds).size !== row.templateIds.length)
+          deny('invalid-argument', 'Select 1–50 distinct request types.', 'contractor-manage');
+        row.templateIds.forEach(id);
+        const invitationId = randomUUID();
+        return { email, name: row.name?.trim() || emailLocalPart(row.email), invitationId, reference: randomUUID(), expiresAt: invitationExpiry(row.expiresAt, clock()),
+          pairs: row.templateIds.map((templateId) => ({ templateId, id: randomUUID(), slot: createHash('sha256').update(invitationId + ':' + templateId).digest('hex') })) };
+      });
+      if (new Set(rows.map((row) => row.email)).size !== rows.length || rows.reduce((sum, row) => sum + row.pairs.length, 0) > 50)
+        deny('invalid-argument', 'Use distinct emails and at most 50 request assignments per batch.', 'contractor-manage');
+      const typeIds = [...new Set(rows.flatMap((row) => row.pairs.map((pair) => pair.templateId)))];
+      return db.runTransaction(async (tx) => {
+        await gateAndAuthorize(tx, authorize);
+        const refs = rows.map((row) => db.doc('allowlist/' + emailKey(row.email)));
+        const existing = await tx.getAll(...refs);
+        const entries = await tx.get(db.collection('allowlist').limit(101));
+        const templates = await tx.getAll(...typeIds.map((value) => item('templates', value)));
+        if (existing.some((doc) => doc.exists)) deny('already-exists', 'A contractor already exists. Refresh the preview and use the existing row; this batch added nothing.', 'contractor-manage');
+        if (entries.size + rows.length > 100) deny('failed-precondition', 'The reviewed 100-contractor capacity would be exceeded.', 'contractor-manage');
+        const saved = templates.map((doc) => doc.data());
+        if (saved.some((template) => !template || template.status !== 'active' || !validRequestTemplate(template)))
+          deny('failed-precondition', 'A selected request type changed or was archived. Refresh and review again.', 'contractor-manage');
+        rows.forEach((row, index) => {
+          const { pairs, ...entry } = row;
+          tx.create(refs[index], { ...entry, status: 'active', revision: 1, createdAt: at(), updatedAt: at(), responsibleAdminUid: who.uid });
+          audit(tx, who, null, 'invitation_created', { invitationId: row.invitationId });
+          pairs.forEach((pair) => {
+            tx.create(item('slots', pair.slot), { assignmentId: pair.id });
+            tx.create(item('assignments', pair.id), { invitationId: row.invitationId, emailKey: emailKey(row.email), templateId: pair.templateId,
+              template: saved[typeIds.indexOf(pair.templateId)], status: 'pending', createdAt: at() });
+            audit(tx, who, pair.id, 'request_assigned', { invitationId: row.invitationId });
+          });
+        });
+        return { invitationId: rows.length === 1 ? rows[0].invitationId : null, created: rows.reduce((sum, row) => sum + row.pairs.length, 0),
+          contractors: rows.map((row) => ({ invitationId: row.invitationId, created: row.pairs.length })) };
+      });
+    },
     async assign(who, data, authorize) {
       exactKeys(data, ['invitationIds', 'templateIds']);
       for (const key of ['invitationIds', 'templateIds']) {
@@ -164,7 +213,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
           audit(tx, who, entry.id, 'request_assigned', { invitationId: entry.invitationId });
           created++;
         }
-        return { created, unchanged: entries.length - created };
+        return { created, unchanged: entries.length - created, results: entries.map((entry) => ({ invitationId: entry.invitationId, templateId: entry.templateId, assignmentId: entry.skip ? slots[entries.indexOf(entry)].data().assignmentId : entry.id, status: entry.skip ? 'already_assigned' : 'created' })) };
       });
     },
     async cancel(who, data, authorize) {

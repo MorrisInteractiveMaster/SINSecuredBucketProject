@@ -1,4 +1,5 @@
 import { Timestamp } from 'firebase-admin/firestore';
+import { createContractorAccess } from './contractors.mjs';
 import { createAdminOperations } from '../../functions/lib/admin-operations.mjs';
 import { createService } from '../../functions/lib/service.mjs';
 import { initialRoster, initialOwnerKey } from '../../functions/lib/admin-roster.mjs';
@@ -112,6 +113,9 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
     const authorizeTx = access(who);
     const authorize = (actor, permission) => scoped.runTransaction((tx) => authorizeTx(tx, actor, permission));
     const service = { authorizeTx, authorize };
+    const contractorAccess = createContractorAccess({ db: scoped, clock });
+    if (['portalContractorReview', 'portalContractorApply'].includes(op))
+      return contractorAccess[op === 'portalContractorReview' ? 'review' : 'apply'](who, data, (tx) => authorizeTx(tx, who, 'invitationManagement'));
     const operations = createAdminOperations({ db: scoped, service, clock, staffMetadata: true });
     if (op === 'portalContext') {
       exactKeys(data, []);
@@ -127,6 +131,7 @@ export function createStaffWorkspace({ db, clock, verifyMicrosoft, roster = init
       };
     }
     const requestOperations = {
+      portalContractorCreate: ['createContractor', 'invitationManagement'],
       portalRequestsOverview: ['admin', 'statusViewing'], portalRequestTemplate: ['template', 'invitationManagement'],
       portalRequestAssign: ['assign', 'invitationManagement'], portalRequestCancel: ['cancel', 'invitationManagement'],
       portalRequestReveal: ['reveal', 'statusViewing'], portalRequestFileDelete: ['deleteFile', 'invitationManagement'],

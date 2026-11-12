@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { Timestamp } from 'firebase-admin/firestore';
 import { seedMvp } from '../scripts/seed-mvp.mjs';
+import { createContractorAccess } from '../cloud-functions/cloud/contractors.mjs';
 import { createService } from '../functions/lib/service.mjs';
 import { emailKey } from '../functions/lib/security.mjs';
 if (
@@ -162,10 +163,11 @@ test('revocation and removal immediately deny backend and Firestore access; new 
     getDoc(doc(client, 'portalSessions', w.uid)),
     (e) => e.code === 'permission-denied',
   );
-  await service.importCsv(
-    admin(),
-    'name,email,status\nDemo,contractor@example.com,active',
-  );
+  await bad(service.importCsv(admin(), 'name,email,status\nDemo,contractor@example.com,active'), 'failed-precondition');
+  const access = createContractorAccess({ db, clock: () => now }), actor = admin();
+  const authorize = (tx) => service.authorizeTx(tx, actor, 'invitationManagement');
+  const review = await access.review(actor, { action: 'restore', invitationIds: [c.invitationId] }, authorize);
+  await access.apply(actor, { reviewId: review.reviewId, confirmation: 'RESTORE ACCESS' }, authorize);
   const switched = who('google.com', 'different-uid');
   assert.equal((await service.context(switched)).needsVerification, true);
   await bad(
@@ -198,15 +200,6 @@ test('20 concurrent backend submissions create one record; provider switching an
   ).data();
   assert.ok(Buffer.isBuffer(record.ciphertext));
   assert.equal(JSON.stringify(record).includes('000000018'), false);
-  await service.importCsv(
-    admin(),
-    'name,email,status\nChanged,contractor@example.com,removed',
-  );
-  await bad(service.context(w), 'permission-denied');
-  await service.importCsv(
-    admin(),
-    'name,email,status\nChanged,contractor@example.com,active',
-  );
   const switched = who('google.com', 'different-google-uid');
   await proveAfterCooldown(switched);
   const cc = await service.context(switched);
@@ -216,6 +209,10 @@ test('20 concurrent backend submissions create one record; provider switching an
     service.submit(switched, { ...data, revision: cc.revision }),
     'already-exists',
   );
+  await service.importCsv(admin(), 'name,email,status\nChanged,contractor@example.com,removed');
+  await bad(service.context(switched), 'permission-denied');
+  await bad(service.importCsv(admin(), 'name,email,status\nChanged,contractor@example.com,active'), 'failed-precondition');
+  await bad(service.context(switched), 'permission-denied');
   await service.correction(admin(), c.invitationId);
   assert.equal(
     (await db.doc(`submissions/${c.invitationId}`).get()).data().status,
@@ -318,13 +315,14 @@ test('sensitive retrieval remains blocked and audit fields contain no request pa
   await db.doc('roles/mi-admin').update({ sensitiveRetrieval: true });
   await bad(service.sensitive(admin()), 'failed-precondition');
   const events = await db.collection('auditEvents').get();
-  for (const e of events.docs)
-    assert.deepEqual(Object.keys(e.data()).sort(), [
-      'actorUid',
-      'at',
-      'event',
-      'invitationId',
-    ]);
+  for (const e of events.docs) {
+    const fields = ['actorUid', 'at', 'event', 'invitationId'];
+    if (e.data().event === 'contractor_access_reviewed') fields.push('action', 'count', 'reviewId');
+    if (e.data().event === 'contractor_access_restored') fields.push('reviewId', 'previousStatus', 'previousExpiry', 'newExpiry');
+    assert.deepEqual(Object.keys(e.data()).sort(), fields.sort());
+    for (const secret of ['000000018', 'ciphertext', 'access_token', 'contractor@example.com'])
+      assert.equal(JSON.stringify(e.data()).includes(secret), false);
+  }
 });
 function jwt(payload) {
   return `${Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')}.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.`;

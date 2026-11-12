@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
+import { accessStatus } from './contractor-access.mjs';
 import { emailLocalPart } from './csv.mjs';
 import { deny } from './security.mjs';
 import {
@@ -96,6 +97,8 @@ export function createAdminOperations({ db, service, clock = Date.now, staffMeta
         email: text(e.email),
         invitationId: e.invitationId,
         reference: text(e.reference, 64),
+        storedStatus: e.status,
+        revision: Number.isSafeInteger(e.revision) ? e.revision : null,
         invitationAt: iso(e.createdAt),
         expiresAt: iso(e.expiresAt),
         provider: status(
@@ -104,10 +107,7 @@ export function createAdminOperations({ db, service, clock = Date.now, staffMeta
           'not_recorded',
         ),
         signedInAt: iso(e.firstSignInAt),
-        invitationStatus:
-          e.status === 'active' && expired
-            ? 'expired'
-            : status(e.status, ['active', 'revoked', 'removed'], 'invalid'),
+        invitationStatus: accessStatus(e, now),
         submissionStatus: status(
           s.status,
           ['submitted', 'correction_requested'],
@@ -152,11 +152,10 @@ export function createAdminOperations({ db, service, clock = Date.now, staffMeta
         transferred: rows.filter((r) => r.transferStatus === 'confirmed')
           .length,
         disposed: rows.filter((r) => r.disposalStatus === 'disposed').length,
-        revoked: rows.filter((r) =>
-          ['revoked', 'removed', 'expired', 'invalid'].includes(
-            r.invitationStatus,
-          ),
-        ).length,
+        active: rows.filter((r) => r.invitationStatus === 'active').length,
+        expired: rows.filter((r) => r.invitationStatus === 'expired').length,
+        removed: rows.filter((r) => r.invitationStatus === 'removed').length,
+        revoked: rows.filter((r) => r.invitationStatus === 'revoked').length,
         attention: rows.filter((r) => r.attention).length,
       },
       generatedAt: new Date(clock()).toISOString(),

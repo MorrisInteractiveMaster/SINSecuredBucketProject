@@ -5,9 +5,9 @@ import { message } from '../app/client';
 import { normalizeAndValidate } from '../app/encryption';
 import { requestKinds, validRequestValue, requestStatusLabel } from '../../functions/lib/request-types.mjs';
 
-type Template = { id: string; type: keyof typeof requestKinds; label: string; instructions: string; maxLength: number; status: string; revision: string };
-type Assignment = { id: string; invitationId: string; templateId: string; template: Template; status: string; submittedAt: string | null; viewedAt: string | null };
-type Catalog = { templates: Template[]; assignments: Assignment[]; filesEnabled: boolean };
+export type Template = { id: string; type: keyof typeof requestKinds; label: string; instructions: string; maxLength: number; status: string; revision: string };
+export type Assignment = { id: string; invitationId: string; templateId: string; template: Template; status: string; submittedAt: string | null; viewedAt: string | null };
+export type Catalog = { templates: Template[]; assignments: Assignment[]; filesEnabled: boolean };
 const freshTemplate = () => ({ type: 'sin', label: '', instructions: '', maxLength: 24, status: 'active' }) as Template;
 
 export function ContractorRequests({ api, signOut, legacySubmitted = false }: { api: Api; signOut: () => void; legacySubmitted?: boolean }) {
@@ -224,8 +224,8 @@ export function StaffRequests({ context, api, rows, contractorId, selectedIds = 
     </>}
   </section>;
 }
-function StaffRequest({ assignment, api, label, canManage, canDelete, authorizationPending, refresh }: {
-  assignment: Assignment; api: Api; label?: string; canManage: boolean; canDelete: boolean; authorizationPending: boolean; refresh: () => Promise<void>;
+export function StaffRequest({ assignment, api, label, canManage, canDelete, authorizationPending, refresh, filesEnabled = true }: {
+  assignment: Assignment; api: Api; label?: string; canManage: boolean; canDelete: boolean; authorizationPending: boolean; refresh: () => Promise<void>; filesEnabled?: boolean;
 }) {
   const [clear, setClear] = useState('');
   const [preview, setPreview] = useState('');
@@ -278,7 +278,8 @@ function StaffRequest({ assignment, api, label, canManage, canDelete, authorizat
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <div className="request-actions">
-      {openable && <>
+      {isFile && !filesEnabled && <p>File access is disabled by the release gate. The saved file is preserved.</p>}
+      {openable && (!isFile || filesEnabled) && <>
         <Button disabled={busy || authorizationPending} onClick={() => {
           if (assignment.template.type === 'sin' && !window.confirm('Reveal once and remove this SIN? A failed delivery cannot be reopened.')) return;
           void action(isFile ? 'portalRequestFilePreview' : 'portalRequestReveal');
@@ -287,7 +288,7 @@ function StaffRequest({ assignment, api, label, canManage, canDelete, authorizat
       </>}
       {(clear || preview || download) && <Button onClick={hide}>Hide</Button>}
       {['pending', 'quarantined'].includes(assignment.status) && canManage && <Button disabled={busy || authorizationPending} onClick={() => void action('portalRequestCancel')}>Cancel pending request</Button>}
-      {isFile && canDelete && ['submitted', 'viewed', 'deleting'].includes(assignment.status) && <Button onClick={() => setRemove(true)}>Delete file…</Button>}
+      {isFile && filesEnabled && canDelete && ['submitted', 'viewed', 'deleting'].includes(assignment.status) && <Button onClick={() => setRemove(true)}>Delete file…</Button>}
     </div>
     {remove && <div className="callout"><p>Delete file for request {assignment.id}? Active bytes are removed. Retained versions, backups or external copies may remain.</p>
       <Button disabled={busy || authorizationPending} onClick={() => { hide(); void action('portalRequestFileDelete'); setRemove(false); }}>Confirm delete</Button>

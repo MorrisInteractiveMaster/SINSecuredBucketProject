@@ -80,7 +80,7 @@ export function createTransportHandler({ dispatch, verifyAppToken }) {
       res.status(200).json({ result });
     } catch (error) {
       if (error instanceof PortalError && [
-        'microsoft-assertion', 'microsoft-member-binding', 'firebase-auth-reader', 'firebase-session', 'firebase-revoked',
+        'contractor-manage', 'microsoft-assertion', 'microsoft-member-binding', 'firebase-auth-reader', 'firebase-session', 'firebase-revoked',
         'staff-policy', 'synthetic-policy', 'sin-unavailable', 'sin-delivery', 'bucket-mail', 'bucket-mail-rate', 'bucket-code', 'bucket-field-changed', 'bucket-value', 'invitation-csv', 'invitation-duplicate',
       ].includes(error.stage)) stage = error.stage;
       else if (!(error instanceof PortalError) && !(error instanceof HttpsError) && [7, 14, 'PERMISSION_DENIED', 'UNAVAILABLE'].includes(error?.code))

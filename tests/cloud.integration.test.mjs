@@ -799,3 +799,90 @@ test('file capabilities require verified active ownership and expire before and 
   now += 61000;
   await assert.rejects(upload(first, next.id));
 });
+
+test('contractor management is atomic, permission checked and restores access without rewriting history', async () => {
+  const ns = 'staffWorkspace/v1/', root = ns + 'requestsV2/v1/';
+  const staffUid = request(adminToken).auth.uid, admin = 'staff@example.org';
+  await db.doc(ns + 'policy/access').set({ ...policy, version: 1, invitationImportApproved: true, privacyApprovalReference: guid });
+  await db.doc(ns + 'policy/sin-release').set({ enabled: true, approvalReference: guid,
+    kmsKey: 'projects/fictional-keys/locations/northamerica-northeast1/keyRings/fixture/cryptoKeys/fixture' });
+  await db.doc(ns + 'policy/requests-v2').set({ enabled: true, cutover: true, approvalReference: guid, filesEnabled: false });
+  await db.doc(ns + 'roles/' + staffUid).set({ active: true, tenantId: guid, objectId: guid, emailKey: emailKey(admin), statusViewing: true, invitationManagement: true });
+  await db.doc('staffLimits/member_' + staffUid).delete();
+  let timeline = Date.now();
+  const runtime = createCloudRuntime({ db, auth, clock: () => timeline, projectId: 'demo-mi-sin-portal', emulator: true,
+    staffRoster: [{ key: emailKey(admin), label: 'Fictional Staff' }],
+    verifyMicrosoft: async () => ({ tenantId: guid, objectId: guid, member: true, accountEmail: admin }),
+    custody: (_, operation) => operation === 'encrypt' ? { wrap: async (key) => Buffer.from(key) } : { unwrap: async (key) => Buffer.from(key) },
+  });
+  const call = (t, operation, payload = {}) => runtime(request(t, operation, payload));
+  const phone = await call(adminToken, 'portalRequestTemplate', { type: 'phone', label: 'Original contact phone', instructions: 'Fictional', status: 'active', maxLength: 32 });
+  const payload = { name: '   ', email: 'workspace-new@example.org', templateIds: [phone.id] };
+  await assert.rejects(call(outsiderToken, 'portalContractorCreate', payload));
+  const beforeCount = (await db.collection(ns + 'allowlist').get()).size;
+  const pair = await Promise.allSettled([call(adminToken, 'portalContractorCreate', payload), call(adminToken, 'portalContractorCreate', payload)]);
+  assert.equal(pair.filter((r) => r.status === 'fulfilled').length, 1);
+  const created = pair.find((r) => r.status === 'fulfilled').value;
+  const invitationId = created.invitationId, ref = db.doc(ns + 'allowlist/' + emailKey(payload.email));
+  const original = (await ref.get()).data();
+  assert.equal(original.name, 'workspace-new');
+  assert.ok(original.expiresAt.toMillis() >= timeline + 30 * 86400000);
+  assert.equal((await db.collection(ns + 'allowlist').get()).size, beforeCount + 1);
+  assert.equal((await call(adminToken, 'portalRequestAssign', { invitationIds: [invitationId], templateIds: [phone.id] })).unchanged, 1);
+  await call(adminToken, 'portalRequestTemplate', { id: phone.id, type: 'phone', label: 'Future label', instructions: 'Future', status: 'active', maxLength: 32 });
+  const assigned = await db.collection(root + 'assignments').where('invitationId', '==', invitationId).get();
+  const assignment = assigned.docs[0];
+  assert.equal(assignment.data().template.label, 'Original contact phone');
+  await assert.rejects(call(adminToken, 'portalContractorCreate', { rows: [{ email: 'workspace-batch@example.org', templateIds: [phone.id] }, payload] }));
+  assert.equal((await db.doc(ns + 'allowlist/' + emailKey('workspace-batch@example.org')).get()).exists, false, 'batch conflict writes nothing');
+  const legacy = db.doc(ns + 'submissions/' + invitationId);
+  await legacy.set({ status: 'submitted', retrievalStatus: 'retrieved', nonSensitiveMarker: 'consumed' });
+  await assignment.ref.update({ status: 'removed' });
+  const pdfId = randomUUID();
+  await db.doc(root + 'assignments/' + pdfId).set({ invitationId, status: 'submitted', template: { type: 'file', label: 'Preserved PDF' }, file: { generation: '123', sha256: 'f'.repeat(64) } });
+  const pdfBefore = (await db.doc(root + 'assignments/' + pdfId).get()).data();
+  const expiresAt = Timestamp.fromMillis(timeline - 1000);
+  await ref.update({ status: 'revoked', expiresAt, boundUid: 'preserved-uid', mailboxProof: { verified: true } });
+  const expiredRevoked = (await ref.get()).data();
+  await assert.rejects(call(outsiderToken, 'portalContractorReview', { action: 'restore', invitationIds: [invitationId] }));
+  await assert.rejects(call(contractorToken, 'portalContractorApply', { reviewId: randomUUID(), confirmation: 'RESTORE ACCESS' }));
+  const renewBlocked = await call(adminToken, 'portalContractorReview', { action: 'renew', invitationIds: [invitationId] });
+  assert.equal(renewBlocked.reviewId, null);
+  const review = await call(adminToken, 'portalContractorReview', { action: 'restore', invitationIds: [invitationId] });
+  await assert.rejects(call(adminToken, 'portalContractorApply', { reviewId: review.reviewId, confirmation: 'wrong' }));
+  await db.doc(ns + 'roles/' + staffUid).update({ invitationManagement: false });
+  await assert.rejects(call(adminToken, 'portalContractorApply', { reviewId: review.reviewId, confirmation: 'RESTORE ACCESS' }));
+  await db.doc(ns + 'roles/' + staffUid).update({ invitationManagement: true });
+  const change = { reviewId: review.reviewId, confirmation: 'RESTORE ACCESS' };
+  const restores = await Promise.all([call(adminToken, 'portalContractorApply', change), call(adminToken, 'portalContractorApply', change)]);
+  assert.equal(restores.filter((r) => r.replayed).length, 1);
+  const restored = (await ref.get()).data();
+  assert.deepEqual(restored, { ...expiredRevoked, status: 'active', updatedAt: restored.updatedAt });
+  assert.equal(restored.expiresAt.toMillis(), expiresAt.toMillis(), 'restore never silently renews');
+  assert.equal((await legacy.get()).data().retrievalStatus, 'retrieved');
+  assert.equal((await assignment.ref.get()).data().status, 'removed');
+  assert.equal((await db.doc(root + 'payloads/' + assignment.id).get()).exists, false, 'consumed payload stays absent');
+  assert.deepEqual((await db.doc(root + 'assignments/' + pdfId).get()).data(), pdfBefore);
+  const renewed = await call(adminToken, 'portalContractorReview', { action: 'renew', invitationIds: [invitationId] });
+  await call(adminToken, 'portalContractorApply', { reviewId: renewed.reviewId, confirmation: 'RENEW INVITATIONS' });
+  assert.ok((await ref.get()).data().expiresAt.toMillis() > timeline);
+  await assert.rejects(call(adminToken, 'portalRequestAssign', { invitationIds: [invitationId], templateIds: Array.from({ length: 51 }, () => randomUUID()) }));
+  // Review is invalid if another operator changes the reviewed access fields.
+  const expires = await call(adminToken, 'portalContractorReview', { action: 'revoke', invitationIds: [invitationId] });
+  await db.doc(ns + 'contractorReviews/' + expires.reviewId).update({ expiresAt: Timestamp.fromMillis(timeline - 1) });
+  await assert.rejects(call(adminToken, 'portalContractorApply', { reviewId: expires.reviewId, confirmation: 'REVOKE ACCESS' }));
+  const revoke = await call(adminToken, 'portalContractorReview', { action: 'revoke', invitationIds: [invitationId] });
+  await ref.update({ revision: original.revision + 10 });
+  await assert.rejects(call(adminToken, 'portalContractorApply', { reviewId: revoke.reviewId, confirmation: 'REVOKE ACCESS' }));
+  assert.equal((await ref.get()).data().status, 'active');
+  // Explicit correction holds and removed records cannot be restored by this endpoint.
+  await db.doc('staffLimits/member_' + staffUid).delete();
+  await ref.update({ status: 'revoked' }); await legacy.update({ status: 'correction_requested' });
+  assert.equal((await call(adminToken, 'portalContractorReview', { action: 'restore', invitationIds: [invitationId] })).reviewId, null);
+  await ref.update({ status: 'removed' });
+  assert.equal((await call(adminToken, 'portalContractorReview', { action: 'restore', invitationIds: [invitationId] })).reviewId, null);
+  const events = await db.collection(ns + 'auditEvents').where('invitationId', '==', invitationId).get();
+  assert.equal(events.docs.filter((d) => d.data().event === 'contractor_access_restored').length, 1);
+  assert.ok(events.docs.some((d) => d.data().event === 'invitation_renewed'));
+  assert.ok(events.docs.every((d) => !Object.hasOwn(d.data(), 'email') && !Object.hasOwn(d.data(), 'value')));
+});

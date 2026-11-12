@@ -16,7 +16,7 @@ export function emailLocalPart(email) {
   const at = value.indexOf('@');
   return at > 0 ? value.slice(0, at) : '';
 }
-export function parseAllowlistCsv(text, { preserveBlankName = false } = {}) {
+export function parseCsvRows(text) {
   if (typeof text !== 'string' || new TextEncoder().encode(text).length > 65536)
     throw new Error('CSV limit is 64 KiB');
   text = text.replace(/^\uFEFF/, '');
@@ -63,6 +63,10 @@ export function parseAllowlistCsv(text, { preserveBlankName = false } = {}) {
   }
   if (quoted) throw new Error('Unclosed quote');
   if (value || row.length || ended) line();
+  return rows;
+}
+export function parseAllowlistCsv(text, { preserveBlankName = false } = {}) {
+  const rows = parseCsvRows(text);
   const header = rows[0]?.map((x) => x.trim().toLowerCase()).join(',');
   const hasName = header === 'name,email,status';
   if (!hasName && header !== 'email,status')
