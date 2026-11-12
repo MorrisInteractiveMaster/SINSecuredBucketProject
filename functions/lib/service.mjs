@@ -1,5 +1,6 @@
 import { randomUUID, randomInt, createHash } from 'node:crypto';
 import { Timestamp } from 'firebase-admin/firestore';
+import { DEFAULT_INVITATION_DAYS } from './contractor-access.mjs';
 import { parseAllowlistCsv } from './csv.mjs';
 import {
   emailKey,
@@ -270,8 +271,11 @@ export function createService({
             audit(tx, who, 'invitation_updated', old.invitationId);
             return;
           }
+          if (old && ((row.status === 'active' && old.status !== 'active') || (old.status === 'removed' && row.status !== 'removed')))
+            deny('failed-precondition', 'Access restoration requires an explicit administrator review; reimport cannot restore it.', 'contractor-manage');
           // Reimport/soft removal NEVER deletes a consumed slot or issues a fresh ID.
           tx.set(refs[i], {
+            ...(old || {}),
             ...row,
             dedicatedTestApproved: approveDedicatedTesters || old?.dedicatedTestApproved === true,
             ...(old?.dedicatedTestUid ? {
@@ -283,7 +287,7 @@ export function createService({
               : newIds[i]),
             revision: (old?.revision || 0) + 1,
             expiresAt:
-              old?.expiresAt || Timestamp.fromMillis(clock() + 72 * 3600000),
+              old?.expiresAt || Timestamp.fromMillis(clock() + DEFAULT_INVITATION_DAYS * 86400000),
             createdAt: old
               ? old.createdAt || null
               : Timestamp.fromMillis(clock()),

@@ -31,6 +31,8 @@ export type Row = {
   provider: string;
   signedInAt: string | null;
   invitationStatus: string;
+  storedStatus?: string;
+  revision?: number | null;
   submissionStatus: string;
   submittedAt: string | null;
   retrievalStatus: string;

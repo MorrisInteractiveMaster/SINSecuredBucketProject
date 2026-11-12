@@ -20,11 +20,12 @@
     "check:cloud": "node scripts/check-cloud-release.mjs",
     "test:release": "node --test tests/cloud-release.test.mjs",
     "test:cloud:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.cloud-test.emulator.json --only auth,firestore 'node --test --test-concurrency=1 tests/cloud.integration.test.mjs'",
-    "test:all": "npm test && npm run test:release && npm run test:emulators && npm run test:emulators:closed && npm run test:mvp:local-http && npm run test:cloud:emulators && npm run test:ui && npm run test:phase4 && npm run test:requests && npm run test:files:emulators",
+    "test:all": "npm test && npm run test:release && npm run test:emulators && npm run test:emulators:closed && npm run test:mvp:local-http && npm run test:cloud:emulators && npm run test:ui && npm run test:phase4 && npm run test:requests && npm run test:files:emulators && npm run test:workspace",
     "test:ui": "vitest run",
     "test:phase4": "node --test --test-timeout=25000 tests/owner-setup.test.mjs tests/production-candidate.test.mjs tests/phase5.test.mjs",
     "test:requests": "node --test --test-timeout=20000 tests/request-files.test.mjs",
-    "test:files:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.files.emulator.json --only storage 'node --test --test-timeout=25000 tests/request-storage.emulator.test.mjs'"
+    "test:files:emulators": "npx --yes firebase-tools@15.35.0 emulators:exec --project demo-mi-sin-portal --config firebase.files.emulator.json --only storage 'node --test --test-timeout=25000 tests/request-storage.emulator.test.mjs'",
+    "test:workspace": "node --test --test-timeout=25000 tests/contractor-workspace.test.mjs"
   },
   "dependencies": {
     "exceljs-community": "5.2.1",

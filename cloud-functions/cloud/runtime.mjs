@@ -31,6 +31,7 @@ const OPERATIONS = [
   'portalImportAllowlist',
   'portalListContractors',
   'portalSubmit', 'portalSubmitSin', 'portalBucketReveal', 'portalBucketSendCode', 'portalBucketVerifyCode', 'portalBucketConfigure',
+  'portalContractorCreate', 'portalContractorReview', 'portalContractorApply',
   'portalRequestsOverview', 'portalRequestTemplate', 'portalRequestAssign', 'portalRequestCancel',
   'portalRequestList', 'portalRequestSubmit', 'portalRequestReveal', 'portalRequestUpload', 'portalRequestFinishUpload',
   'portalRequestFilePreview', 'portalRequestFileDownload', 'portalRequestFileDelete',
@@ -116,7 +117,7 @@ export function createCloudRuntime({
       await enforceRequestBudget(db, 'staffLimits', 'contractor_' + who.uid, clock);
       return requests[assignedOperations[op]](who, data);
     }
-    if (['portalRequestsOverview', 'portalRequestTemplate', 'portalRequestAssign', 'portalRequestCancel',
+    if (['portalContractorCreate', 'portalContractorReview', 'portalContractorApply', 'portalRequestsOverview', 'portalRequestTemplate', 'portalRequestAssign', 'portalRequestCancel',
       'portalRequestReveal', 'portalRequestFilePreview', 'portalRequestFileDownload', 'portalRequestFileDelete'].includes(op)) deny();
     if (op === 'portalBucketReveal' || op === 'portalBucketConfigure') deny();
     const bucketOps = {

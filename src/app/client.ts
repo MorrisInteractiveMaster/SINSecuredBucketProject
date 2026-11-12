@@ -59,6 +59,8 @@ export function message(error: unknown) {
 }
 function describeError(error: unknown, stage?: string) {
   const code = (error as { code?: string })?.code || '';
+  if (stage === 'contractor-manage' && typeof (error as { message?: string })?.message === 'string')
+    return (error as { message: string }).message.slice(0, 350);
   if (stage === 'request-format') return 'The portal rejected the request format. Reload the official site and try again.';
   if (stage === 'app-check' && (code === 'functions/permission-denied' || code === 'functions/unauthenticated'))
     return 'Application verification failed. Reload the official portal and try again.';
