@@ -56,12 +56,12 @@ test('guided add is atomic, falls back to local-part and saves only after review
   const p = setup(); await screen.findByText('Original SIN label');
   await p.user.click(screen.getByRole('button', { name: 'Add contractor' }));
   const modal = screen.getByRole('dialog');
-  await p.user.type(within(modal).getByLabelText('Email'), 'fictional@example.org');
+  await p.user.type(within(modal).getByLabelText('Email'), 'Fictional@example.org');
   await p.user.click(within(modal).getAllByLabelText(/Contact Phone/)[0]);
   await p.user.click(within(modal).getByRole('button', { name: 'Review contractor' }));
   expect(p.api.mock.calls.some(([op]: any) => op === 'portalContractorCreate')).toBe(false);
   await p.user.click(within(modal).getByRole('button', { name: 'Save contractor & requests' }));
-  await waitFor(() => expect(p.api).toHaveBeenCalledWith('portalContractorCreate', expect.objectContaining({ name: 'fictional', email: 'fictional@example.org', templateIds: [phone.id] })));
+  await waitFor(() => expect(p.api).toHaveBeenCalledWith('portalContractorCreate', expect.objectContaining({ name: 'Fictional', email: 'fictional@example.org', templateIds: [phone.id] })));
 });
 test('bulk preview excludes revoked, expired and duplicate rows; assignments are reviewed and existing records preserved', async () => {
   const api = vi.fn(async (op) => op === 'portalContractorCreate' ? { contractors: [{}], created: 1 } : op === 'portalRequestAssign' ? { created: 0, unchanged: 1 } : catalog);

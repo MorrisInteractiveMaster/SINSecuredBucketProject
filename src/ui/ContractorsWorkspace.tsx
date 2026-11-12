@@ -130,7 +130,7 @@ export function ContractorsWorkspace({ context, api, rows, refreshRows, authoriz
       {error && <p role="alert">{error}</p>}{results.length > 0 && <ol aria-label="Batch results" role="status">{results.map((result, i) => <li key={i}>{result}</li>)}</ol>}
       {dialog === 'add' && <form onSubmit={(e) => { e.preventDefault(); void run(async () => {
         const normalized = normalizeEmail(email); if (!types.length) throw new Error('Choose at least one request type.');
-        if (!step) { setEmail(normalized); setStep(true); return; }
+        if (!step) { if (!name.trim()) setName(emailLocalPart(email)); setEmail(normalized); setStep(true); return; }
         await api('portalContractorCreate', { name: name.trim() || emailLocalPart(email), email: normalized, expiresAt: expiryISO(expiry), templateIds: types });
         setDialog(null); await afterSave('Contractor and requests saved. Share the website link manually; no email was sent.');
       }); }}>
