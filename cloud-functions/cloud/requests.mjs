@@ -248,7 +248,7 @@ export function createRequests({ db, clock, legacy, credential, kmsFetcher, cust
       });
       if (result.complete) return { accepted: true };
       let file;
-      try { file = await files.inspect(assignmentId, uploadId, result.upload.size, result.policy); }
+      try { file = await files.inspect(assignmentId, uploadId, result.upload.size, result.policy, result.upload.expiresAt.toMillis()); }
       catch { deny('failed-precondition', 'The file remains quarantined. Validation or scanning is incomplete.'); }
       await db.runTransaction(async (tx) => {
         const policy = await release(tx);

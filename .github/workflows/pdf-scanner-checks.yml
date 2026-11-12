@@ -1,0 +1,37 @@
+name: Private PDF scanner checks
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  scanner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --require-hashes -r scanner/requirements.lock
+      - name: Audit hash-locked scanner dependencies
+        run: |
+          python -m venv /tmp/scanner-audit
+          /tmp/scanner-audit/bin/pip install pip-audit==2.10.0
+          /tmp/scanner-audit/bin/pip-audit --disable-pip --no-deps -r scanner/requirements.lock
+      - run: timeout 90s python -m unittest discover -s scanner/tests -v
+      - name: Resolve base digest and build vendor-seeded scanner image
+        run: |
+          docker pull python:3.12-slim-trixie
+          BASE_IMAGE=$(docker inspect --format '{{index .RepoDigests 0}}' python:3.12-slim-trixie)
+          test -n "$BASE_IMAGE"
+          docker build --platform linux/amd64 --build-arg BASE_IMAGE="$BASE_IMAGE" -t mi-scanner-check scanner
+      - name: Real ClamAV and vendor definitions (no cloud credentials)
+        run: |
+          timeout 120s docker run --rm --network=none --entrypoint python \
+            -e MI_REQUIRE_CLAMAV=1 -e MI_REQUIRE_VENDOR_DB=1 \
+            mi-scanner-check -m unittest discover -s tests -v
+      - name: Review installed engine and parser versions
+        run: |
+          docker run --rm --network=none --entrypoint clamscan mi-scanner-check --version
+          docker run --rm --network=none --entrypoint python mi-scanner-check -c 'import pikepdf; print(pikepdf.__version__)'
+# No Google login, cloud credentials, push, deploy, IAM or resource creation.

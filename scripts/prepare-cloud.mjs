@@ -44,6 +44,9 @@ if (process.env.MI_STAGE_OWNER_ACTIVATION === '1') {
   }
   await writeFile(resolve(out, '.env.gen-lang-client-0948635471'), activation, { mode: 0o600 });
 }
+if (process.env.MI_STAGE_SCANNER_NETWORK || process.env.MI_PDF_SCANNER_CONNECTOR) {
+  throw new Error('Scanner VPC staging is obsolete. Unset MI_STAGE_SCANNER_NETWORK and MI_PDF_SCANNER_CONNECTOR; use the normal scoped Functions launcher.');
+}
 console.log(
   'Prepared isolated Node 22 synthetic callable source. No deployment performed.',
 );
