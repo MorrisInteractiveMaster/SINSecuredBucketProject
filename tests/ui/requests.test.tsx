@@ -61,3 +61,30 @@ test('staff request groups and assignment choices use backend counts and preserv
   await user.click(screen.getByRole('button', { name: 'Assign requests' }));
   await waitFor(() => expect(api).toHaveBeenCalledWith('portalRequestAssign', { invitationIds: ['invitation-one'], templateIds: ['type-phone'] }));
 });
+
+test('an expired upload check clears its retry capability and requires a new file selection', async () => {
+  const originalXHR = globalThis.XMLHttpRequest;
+  class UploadedXHR {
+    upload = {}; status = 200; timeout = 0;
+    onload?: () => void;
+    open() {} setRequestHeader() {} abort() {}
+    send() { this.onload?.(); }
+  }
+  vi.stubGlobal('XMLHttpRequest', UploadedXHR);
+  const api = vi.fn(async (operation) => {
+    if (operation === 'portalRequestUpload') return { uploadId: 'fictional-upload', url: 'https://storage.example.org/fictional', expiresAt: Date.now() + 200 };
+    if (operation === 'portalRequestFinishUpload') throw new Error('The file remains quarantined.');
+    return { assignments: [pdf], filesEnabled: true };
+  });
+  try {
+    const user = userEvent.setup();
+    render(<ContractorRequests api={api as any} signOut={vi.fn()} />);
+    await screen.findByRole('region', { name: 'Signed agreement' });
+    const input = document.querySelector('input[type=file]') as HTMLInputElement;
+    await user.upload(input, new File(['%PDF-fictional'], 'fictional.pdf', { type: 'application/pdf' }));
+    await user.click(screen.getByRole('button', { name: 'Submit securely' }));
+    expect(await screen.findByText(/The upload reservation expired/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Submit securely' })).toBeDisabled();
+    expect(api.mock.calls.filter(([op]) => op === 'portalRequestFinishUpload')).toHaveLength(1);
+  } finally { vi.stubGlobal('XMLHttpRequest', originalXHR); }
+});

@@ -47,9 +47,18 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
   const [error, setError] = useState('');
   const [progress, setProgress] = useState(0);
   const [uploadId, setUploadId] = useState<string>();
+  const [uploadExpiresAt, setUploadExpiresAt] = useState<number>();
   const xhr = useRef<XMLHttpRequest | null>(null);
   const template = request.template;
   const pending = request.status === 'pending' || request.status === 'quarantined';
+  useEffect(() => {
+    if (!uploadId || !uploadExpiresAt || !pending) return;
+    const timer = window.setTimeout(() => {
+      setUploadId(undefined); setUploadExpiresAt(undefined);
+      setError('The upload reservation expired. Choose the PDF again to retry securely.');
+    }, Math.max(0, uploadExpiresAt - Date.now()));
+    return () => window.clearTimeout(timer);
+  }, [uploadId, uploadExpiresAt, request.status]);
   useEffect(() => {
     const clear = () => { if (document.hidden) { setValue(''); setFile(null); } };
     document.addEventListener('visibilitychange', clear);
@@ -58,10 +67,10 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
   function choose(selected?: File) {
     if (!selected) return;
     if ((selected.type !== '' && selected.type !== 'application/pdf') || !/^[^/\\\u0000-\u001f\u007f]{1,100}\.pdf$/i.test(selected.name) ||
-        selected.name.includes('..') || selected.size > template.maxLength || selected.size < 5) {
+        selected.name.length > 100 || selected.name.includes('..') || selected.size > template.maxLength || selected.size < 5) {
       setError('Choose a PDF within the request size limit.'); setFile(null); return;
     }
-    setFile(selected); setUploadId(undefined); setError(''); setProgress(0);
+    setFile(selected); setUploadId(undefined); setUploadExpiresAt(undefined); setError(''); setProgress(0);
   }
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -72,7 +81,7 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
         let activeUpload = uploadId;
         if (!activeUpload) {
           if (!file) throw new Error('Choose a PDF first.');
-          const result = await api<{ url: string; uploadId: string }>('portalRequestUpload', {
+          const result = await api<{ url: string; uploadId: string; expiresAt: number }>('portalRequestUpload', {
             assignmentId: request.id, name: file.name, size: file.size, mime: 'application/pdf',
           });
           await new Promise<void>((resolve, reject) => {
@@ -88,7 +97,7 @@ function SubmissionCard({ request, api, refresh, filesEnabled }: { request: Assi
             upload.send(file);
           });
           activeUpload = result.uploadId;
-          setUploadId(activeUpload); setFile(null);
+          setUploadId(activeUpload); setUploadExpiresAt(result.expiresAt); setFile(null);
         }
         await api('portalRequestFinishUpload', { assignmentId: request.id, uploadId: activeUpload });
       } else {

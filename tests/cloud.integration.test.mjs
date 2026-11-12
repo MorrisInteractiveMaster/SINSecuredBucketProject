@@ -698,3 +698,104 @@ test('assigned requests isolate contractors and preserve independent persistent 
   await assert.rejects(call(first, 'portalSubmitSin', { value: '000000018', revision: 'initial' }));
   await assert.rejects(call(adminToken, 'portalRequestReveal', { assignmentId: phoneOne.id }));
 });
+
+test('file capabilities require verified active ownership and expire before and after quarantine scanning', { timeout: 25000 }, async () => {
+  const ns = 'staffWorkspace/v1/', root = ns + 'requestsV2/v1/';
+  const staffUid = request(adminToken).auth.uid;
+  const email = 'file-security@gmail.com', otherEmail = 'phone-only@gmail.com';
+  const first = await token('google.com', email, 'file-security', true);
+  const second = await token('google.com', otherEmail, 'phone-only', true);
+  const unverified = await token('google.com', 'file-security@example.org', 'custom-unverified', false);
+  const outsider = await token('google.com', 'file-outsider@gmail.com', 'file-outsider', true);
+  let now = Date.now(), scans = 0, signings = 0, onScan = async () => {}, onSign = async () => {};
+  const entry = db.doc(ns + 'allowlist/' + emailKey(email));
+  const invitationId = randomUUID(), otherInvitation = randomUUID(), customInvitation = randomUUID();
+  for (const [address, invitation] of [[email, invitationId], [otherEmail, otherInvitation], ['file-security@example.org', customInvitation]])
+    await db.doc(ns + 'allowlist/' + emailKey(address)).set({ email: address, invitationId: invitation, status: 'active', expiresAt: Timestamp.fromMillis(now + 3600000) });
+  await db.doc(ns + 'policy/requests-v2').set({ enabled: true, cutover: true, approvalReference: guid, filesEnabled: true });
+  await db.doc(ns + 'roles/' + staffUid).set({ active: true, tenantId: guid, objectId: guid,
+    emailKey: emailKey('staff@example.org'), statusViewing: true, invitationManagement: true });
+  await db.doc('staffLimits/member_' + staffUid).delete();
+  const runtime = createCloudRuntime({ db, auth, clock: () => now, projectId: 'demo-mi-sin-portal', emulator: true,
+    staffRoster: [{ key: emailKey('staff@example.org'), label: 'Fictional Staff' }],
+    verifyMicrosoft: async () => ({ tenantId: guid, objectId: guid, member: true, accountEmail: 'staff@example.org' }),
+    custody: (_, operation) => operation === 'encrypt' ? { wrap: async (key) => Buffer.from(key) } : { unwrap: async (key) => Buffer.from(key) },
+    files: {
+      validate: () => {},
+      upload: async (_assignment, _upload, _size, _policy, expiresAt) => {
+        signings++; await onSign(); return { url: 'https://storage.example.org/fictional', expiresAt };
+      },
+      inspect: async () => { scans++; await onScan(); return { generation: '456', clean: true }; },
+      deliver: async () => ({ url: 'https://storage.example.org/approved' }),
+      delete: async () => { throw new Error('Viewing must never delete'); },
+    },
+  });
+  const call = (identity, operation, payload = {}) => runtime(request(identity, operation, payload));
+  const save = async (type, label, maxLength) => call(adminToken, 'portalRequestTemplate', { type, label, maxLength, instructions: '', status: 'active' });
+  const file = await save('file', 'Security PDF', 1000), phone = await save('phone', 'Security phone', 32), sin = await save('sin', 'Security SIN', 24);
+  await call(adminToken, 'portalRequestAssign', { invitationIds: [invitationId, customInvitation], templateIds: [file.id, sin.id] });
+  await call(adminToken, 'portalRequestAssign', { invitationIds: [otherInvitation], templateIds: [phone.id] });
+  const rows = (await call(first, 'portalRequestList')).assignments;
+  const fileRow = rows.find((a) => a.template.type === 'file'), sinRow = rows.find((a) => a.template.type === 'sin');
+  const phoneRow = (await call(second, 'portalRequestList')).assignments[0];
+  const customRows = await db.collection(root + 'assignments').where('invitationId', '==', customInvitation).get();
+  const customFile = customRows.docs.find((a) => a.data().template.type === 'file').id;
+  const upload = (identity, assignmentId = fileRow.id) => call(identity, 'portalRequestUpload', { assignmentId, name: 'fictional.pdf', size: 50, mime: 'application/pdf' });
+  const finish = (identity, grant, assignmentId = fileRow.id) => call(identity, 'portalRequestFinishUpload', { assignmentId, uploadId: grant.uploadId });
+  await assert.rejects(runtime({ ...request(first, 'portalRequestUpload', {}), auth: undefined }));
+  for (const [identity, assignmentId] of [[second, fileRow.id], [second, phoneRow.id], [first, sinRow.id], [unverified, customFile], [outsider, fileRow.id]])
+    await assert.rejects(upload(identity, assignmentId));
+  await assert.rejects(call(first, 'portalRequestUpload', { assignmentId: fileRow.id, name: 'fictional.pdf', size: 50, mime: 'application/pdf', email: email }));
+  for (const change of [{ status: 'revoked' }, { status: 'active', expiresAt: Timestamp.fromMillis(now - 1) },
+    { expiresAt: Timestamp.fromMillis(now + 3600000), invitationId: randomUUID() }]) {
+    await entry.update(change); await assert.rejects(upload(first));
+  }
+  await entry.update({ status: 'active', invitationId, expiresAt: Timestamp.fromMillis(now + 3600000) });
+  assert.equal(signings, 0, 'rejected identities and non-file assignments never reach signing');
+  now += 61000;
+  const simultaneous = await Promise.allSettled([upload(first), upload(first)]);
+  assert.equal(simultaneous.filter((r) => r.status === 'fulfilled').length, 1);
+  const initial = simultaneous.find((r) => r.status === 'fulfilled').value;
+  assert.equal(initial.expiresAt, now + 300000);
+  await assert.rejects(finish(second, initial));
+  await assert.rejects(finish(first, { uploadId: randomUUID() }));
+  now = initial.expiresAt;
+  await assert.rejects(finish(first, initial));
+  assert.equal(scans, 0, 'expired reservation is denied before object inspection');
+  const afterExpiry = await upload(first);
+  await assert.rejects(finish(first, initial));
+  onScan = async () => { now += 300001; };
+  await assert.rejects(finish(first, afterExpiry));
+  assert.equal((await db.doc(root + 'assignments/' + fileRow.id).get()).data().status, 'quarantined');
+  const beforeRevocation = await upload(first);
+  onScan = async () => { await entry.update({ status: 'revoked' }); };
+  await assert.rejects(finish(first, beforeRevocation));
+  await entry.update({ status: 'active' }); onScan = async () => {};
+  now += 300001;
+  const current = await upload(first);
+  await Promise.all([finish(first, current), finish(first, current)]);
+  await finish(first, current); // acknowledgment retry is idempotent, not a new upload
+  await assert.rejects(upload(first));
+  now = Date.now(); // Start a fresh staff authorization period after advancing upload-expiry fixtures.
+  for (const op of ['portalRequestFilePreview', 'portalRequestFileDownload']) {
+    await assert.rejects(call(second, op, { assignmentId: fileRow.id }));
+    assert.ok((await call(adminToken, op, { assignmentId: fileRow.id })).url);
+  }
+  await assert.rejects(call(first, 'portalRequestFilePreview', { assignmentId: fileRow.id }));
+  await db.doc(ns + 'roles/' + staffUid).update({ active: false });
+  await assert.rejects(call(adminToken, 'portalRequestFileDownload', { assignmentId: fileRow.id }));
+  await db.doc(ns + 'roles/' + staffUid).update({ active: true });
+  const events = await db.collection(ns + 'auditEvents').where('assignmentId', '==', fileRow.id).get();
+  assert.equal(events.docs.filter((event) => event.data().event === 'request_file_accepted').length, 1);
+  assert.equal((await db.doc(root + 'assignments/' + fileRow.id).get()).data().status, 'viewed');
+  // A cancellation/revocation while keyless signing is in flight must not return a capability.
+  const extra = await save('file', 'Cancelled security PDF', 1000);
+  await call(adminToken, 'portalRequestAssign', { invitationIds: [invitationId], templateIds: [extra.id] });
+  const next = (await call(first, 'portalRequestList')).assignments.find((a) => a.templateId === extra.id);
+  onSign = async () => { await entry.update({ status: 'revoked' }); };
+  await assert.rejects(upload(first, next.id));
+  await entry.update({ status: 'active' }); onSign = async () => {};
+  await call(adminToken, 'portalRequestCancel', { assignmentId: next.id });
+  now += 61000;
+  await assert.rejects(upload(first, next.id));
+});

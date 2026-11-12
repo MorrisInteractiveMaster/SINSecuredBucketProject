@@ -1,0 +1,6 @@
+{
+  "storage": [{
+    "bucket": "gen-lang-client-0948635471-mi-secure-bucket",
+    "rules": "storage.mi-secure-bucket.rules"
+  }]
+}
